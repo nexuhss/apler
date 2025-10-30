@@ -316,7 +316,7 @@ discordClient.on('interactionCreate', async (interaction) => {
       // Clear existing history when switching modes
       conversationHistory.clear();
       
-      await interaction.reply(`✅ Memory mode changed from **${oldMode}** to **${mode}**!\n\nNow ${modeDescription}. Previous conversation history has been cleared.`);
+      await interaction.reply({ content: `✅ Memory mode changed from **${oldMode}** to **${mode}**!\n\nNow ${modeDescription}. Previous conversation history has been cleared.`, ephemeral: true });
     }
     else if (commandName === 'stats') {
       const uptime = Date.now() - botStartTime;
