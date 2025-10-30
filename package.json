@@ -1,0 +1,14 @@
+{
+  "name": "apler",
+  "version": "1.0.0",
+  "description": "A Discord bot powered by Gemini",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  }
+}
