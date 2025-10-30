@@ -151,10 +151,16 @@ async function registerCommands() {
 }
 
 // --- DISCORD BOT LOGIC ---
-discordClient.once('ready', async () => {
+discordClient.once('clientReady', async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   console.log('Bot is ready and waiting for messages.');
+  console.log(`Bot is in ${discordClient.guilds.cache.size} server(s)`);
   await registerCommands();
+  
+  // Heartbeat to keep process alive
+  setInterval(() => {
+    console.log(`[Heartbeat] Bot running - ${new Date().toISOString()}`);
+  }, 5 * 60 * 1000); // Log every 5 minutes
 });
 
 // Helper function to get AI response
