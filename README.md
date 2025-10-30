@@ -1,70 +1,168 @@
-# Apler - Gemini Discord Bot
+# 🤖 Apler - Gemini Discord Bot
 
-Your step-by-step guide to creating and deploying the Apler bot with Gemini 2.5 Flash.
+<div align="center">
 
-## Step 1: The Plan & A Common Misconception
+[![Discord.js](https://img.shields.io/badge/Discord.js-v14-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.js.org/)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-2.5-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 
-You want to build a Discord bot using the powerful Gemini model and host it for free online. That's an excellent goal! However, there's a critical point to understand about hosting.
+A powerful Discord bot powered by Google's Gemini 2.5 Pro AI with intelligent fallback to Gemini 2.5 Flash.
 
-### Hosting Bots vs. Websites
+[Features](#-features) • [Installation](#-installation) • [Deployment](#-deployment) • [Usage](#-usage)
 
-Platforms like Netlify or Vercel are designed for static websites and serverless functions. A Discord bot needs a persistent, long-running server process to stay online and listen for messages 24/7. Netlify is not the right tool for this job.
+</div>
 
-Don't worry! This guide will show you the correct architecture and point you to free services that can host a bot.
+---
 
-## Step 2: The Correct Architecture
+## ✨ Features
 
-Here's how all the pieces fit together:
+- 🧠 **Dual AI Models**: Uses Gemini 2.5 Pro with automatic fallback to Gemini 2.5 Flash when rate limits are reached
+- ⚡ **Fast Responses**: Intelligent model switching ensures minimal downtime
+- 💬 **Mention-based**: Simply mention @apler to interact
+- 📝 **Long Message Support**: Automatically handles responses exceeding Discord's 2000 character limit
+- 🔒 **Secure**: Environment-based configuration keeps your API keys safe
 
-🤖 Your Discord Bot - A Node.js application that listens for commands on your Discord server.
+## 🚀 Quick Start
 
-🧠 Gemini 2.5 Flash API - The "brain" that processes user prompts and generates intelligent responses.
+### Prerequisites
 
-☁️ Backend Hosting Service (e.g., Render, Railway) - A platform that keeps your Node.js bot running 24/7.
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Discord Bot Token](https://discord.com/developers/applications)
+- [Google Gemini API Key](https://makersuite.google.com/app/apikey)
 
-## Step 3: Getting Your Keys
+### Installation
 
-Before writing code, you need two secret keys:
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/nexuhss/apler.git
+   cd apler
+   ```
 
-- **Discord Bot Token**: This authenticates your script as a bot. Create one in the [Discord Developer Portal](https://discord.com/developers/applications).
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-- **Gemini API Key**: This gives you access to the Gemini models. You can get one from [Google AI Studio](https://makersuite.google.com/app/apikey). They offer a free tier with daily limits, which is perfect for starting out.
+3. **Configure environment variables**
+   
+   Create a `.env` file in the project root:
+   ```env
+   DISCORD_BOT_TOKEN=your_discord_bot_token_here
+   GEMINI_API_KEY=your_gemini_api_key_here
+   ```
 
-**Important**: Never share these keys or commit them to public code repositories. We'll use a .env file to keep them safe.
+4. **Enable Discord Bot Intents**
+   
+   Go to the [Discord Developer Portal](https://discord.com/developers/applications):
+   - Select your application
+   - Navigate to **Bot** → **Privileged Gateway Intents**
+   - Enable **Message Content Intent** ✅
 
-## Step 4: Setup
+5. **Invite the bot to your server**
+   
+   Use this URL (replace `YOUR_CLIENT_ID` with your Application ID):
+   ```
+   https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=2048&scope=bot
+   ```
 
-The project is already set up with:
+6. **Start the bot**
+   ```bash
+   npm start
+   ```
 
-- `package.json` with dependencies
-- `index.js` with the bot code
-- `.env` with placeholders (replace with your keys)
-- `.gitignore` to exclude sensitive files
+## 📖 Usage
 
-## Step 5: Running Locally
+Simply mention the bot in any channel with your message:
 
-1. Replace the placeholder values in `.env` with your actual keys.
+```
+@apler What is the meaning of life?
+@apler Write me a poem about coding
+@apler Explain quantum computing in simple terms
+```
 
-2. Run `npm start` to start the bot.
+The bot will respond using:
+- **Gemini 2.5 Pro** (primary model) for the best quality responses
+- **Gemini 2.5 Flash** (fallback model) when rate limits are reached
 
-## Step 6: Deployment
+## 🌐 Deployment
 
-Now it's time to get your bot online. We'll use a service designed for hosting backends. Render has a great free tier for this.
+### Railway (Recommended)
 
-1. Push your project folder (including index.js, package.json, and .gitignore but NOT .env) to a GitHub repository.
+Railway offers $5/month free credit, perfect for keeping your bot online 24/7.
 
-2. Sign up for [Render](https://render.com) and create a new "Web Service".
+1. **Push your code to GitHub** (already done!)
 
-3. Connect the GitHub repository you just created.
+2. **Deploy to Railway**
+   - Visit [railway.app](https://railway.app)
+   - Click **"New Project"** → **"Deploy from GitHub repo"**
+   - Select the `apler` repository
+   - Add environment variables:
+     - `DISCORD_BOT_TOKEN`
+     - `GEMINI_API_KEY`
 
-4. In the settings:
-   - Set the Build Command to `npm install`.
-   - Set the Start Command to `npm start`.
+3. **Deploy!** Railway will automatically detect the Node.js project and start your bot.
 
-5. Go to the "Environment" tab and add your two secret keys:
-   - `DISCORD_BOT_TOKEN` with its value.
-   - `GEMINI_API_KEY` with its value.
+### Alternative Hosting Options
 
-6. Click "Create Web Service". Render will build and deploy your bot!
+| Platform | Free Tier | Always On | Notes |
+|----------|-----------|-----------|-------|
+| [Railway](https://railway.app) | $5/month credit | ✅ Yes | **Recommended** |
+| [Fly.io](https://fly.io) | Free allowance | ✅ Yes | Good alternative |
+| [Render](https://render.com) | Free | ❌ Sleeps after 15min | Testing only |
 
-Other excellent alternatives with free tiers include Railway and Fly.io. The deployment process is very similar.
+## 🛠️ How It Works
+
+```
+User mentions @apler
+       ↓
+Bot receives message
+       ↓
+Try Gemini 2.5 Pro
+       ↓
+   Success? ──Yes──→ Send response
+       ↓
+      No (rate limit)
+       ↓
+Try Gemini 2.5 Flash
+       ↓
+   Success? ──Yes──→ Send response
+       ↓
+      No
+       ↓
+  Error message
+```
+
+## 📝 Project Structure
+
+```
+apler/
+├── index.js          # Main bot logic
+├── package.json      # Dependencies and scripts
+├── .env             # Environment variables (not in git)
+├── .gitignore       # Git ignore rules
+└── README.md        # You are here!
+```
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## 🙏 Acknowledgments
+
+- Built with [Discord.js](https://discord.js.org/)
+- Powered by [Google Gemini AI](https://ai.google.dev/)
+- Inspired by the need for smarter Discord interactions
+
+---
+
+<div align="center">
+
+Made with ❤️ by [nexuhss](https://github.com/nexuhss)
+
+⭐ Star this repo if you find it helpful!
+
+</div>

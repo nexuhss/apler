@@ -27,7 +27,8 @@ const discordClient = new Client({
 
 // Setup Gemini AI client
 const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+const primaryModel = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+const fallbackModel = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 // --- DISCORD BOT LOGIC ---
 discordClient.once('ready', () => {
@@ -55,10 +56,34 @@ discordClient.on('messageCreate', async (message) => {
 
       console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
-      // 5. Call the Gemini API to get a response
-      const result = await model.generateContent(userPrompt);
-      const response = await result.response;
-      const geminiResponseText = response.text();
+      // 5. Call the Gemini API to get a response (with fallback)
+      let geminiResponseText;
+      try {
+        // Try primary model first (gemini-2.5-pro)
+        const result = await primaryModel.generateContent(userPrompt);
+        const response = await result.response;
+        geminiResponseText = response.text();
+        console.log('✓ Used primary model: gemini-2.5-pro');
+      } catch (primaryError) {
+        // Check if it's a rate limit or quota error
+        if (primaryError.status === 429 || primaryError.status === 503 || 
+            (primaryError.message && primaryError.message.includes('quota'))) {
+          console.log('⚠ Primary model limit reached, falling back to gemini-2.5-flash');
+          try {
+            // Fall back to flash model
+            const result = await fallbackModel.generateContent(userPrompt);
+            const response = await result.response;
+            geminiResponseText = response.text();
+            console.log('✓ Used fallback model: gemini-2.5-flash');
+          } catch (fallbackError) {
+            // If fallback also fails, throw the error
+            throw fallbackError;
+          }
+        } else {
+          // If it's not a rate limit error, throw it
+          throw primaryError;
+        }
+      }
 
       // 6. Reply with the response, handling Discord's 2000 character limit
       const MAX_LENGTH = 2000;
