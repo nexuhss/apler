@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
@@ -85,10 +85,211 @@ const modelInstances = GEMINI_API_KEYS.map(apiKey => {
 
 console.log(`Created ${modelInstances.length} model instance(s) for reuse`);
 
+// Bot start time for uptime tracking
+const botStartTime = Date.now();
+
+// --- SLASH COMMANDS SETUP ---
+const commands = [
+  new SlashCommandBuilder()
+    .setName('ask')
+    .setDescription('Ask Apler anything')
+    .addStringOption(option =>
+      option.setName('question')
+        .setDescription('Your question for Apler')
+        .setRequired(true)),
+  
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Show information about Apler and available commands'),
+  
+  new SlashCommandBuilder()
+    .setName('clear')
+    .setDescription('Clear conversation history for this channel (Admin only)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  
+  new SlashCommandBuilder()
+    .setName('stats')
+    .setDescription('Show bot statistics'),
+  
+  new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Check bot response time'),
+].map(command => command.toJSON());
+
+// Register slash commands
+async function registerCommands() {
+  try {
+    const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
+    console.log('Registering slash commands...');
+    
+    await rest.put(
+      Routes.applicationCommands(discordClient.user.id),
+      { body: commands }
+    );
+    
+    console.log('✓ Slash commands registered successfully!');
+  } catch (error) {
+    console.error('Error registering commands:', error);
+  }
+}
+
 // --- DISCORD BOT LOGIC ---
-discordClient.once('ready', () => {
+discordClient.once('ready', async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   console.log('Bot is ready and waiting for messages.');
+  await registerCommands();
+});
+
+// Helper function to get AI response
+async function getAIResponse(userPrompt, channelId) {
+  // Get or create conversation history for this channel
+  if (!conversationHistory.has(channelId)) {
+    conversationHistory.set(channelId, {
+      history: [],
+      lastActivity: Date.now()
+    });
+  }
+  const channelData = conversationHistory.get(channelId);
+  const history = channelData.history;
+  
+  // Update last activity timestamp
+  channelData.lastActivity = Date.now();
+
+  // Add user's message to history
+  history.push({
+    role: 'user',
+    parts: [{ text: userPrompt }]
+  });
+
+  // Keep only last 20 messages (10 exchanges) to avoid token limits
+  if (history.length > 20) {
+    history.splice(0, history.length - 20);
+  }
+
+  // Try all API keys in sequence until one works
+  let geminiResponseText;
+  let usedModel = '';
+  let lastError = null;
+  
+  for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
+    const modelIndex = currentKeyIndex;
+    const model = modelInstances[modelIndex];
+    getNextApiKey(); // Advance to next key for round-robin
+    const keyIndex = modelIndex + 1;
+    
+    try {
+      // Try model with conversation history
+      const chat = model.startChat({
+        history: history.slice(0, -1), // All messages except the current one
+      });
+      const result = await chat.sendMessage(userPrompt);
+      const response = await result.response;
+      geminiResponseText = response.text();
+      usedModel = `gemini-2.5-pro (API Key ${keyIndex})`;
+      console.log(`✓ Used: ${usedModel}`);
+      break; // Success, exit the loop
+    } catch (primaryError) {
+      // Check if it's a rate limit or quota error
+      if (primaryError.status === 429 || primaryError.status === 503 || 
+          (primaryError.message && primaryError.message.includes('quota'))) {
+        console.log(`✗ API Key ${keyIndex} rate limit reached, trying next key...`);
+        lastError = primaryError;
+        // Continue to next API key
+      } else {
+        // If it's not a rate limit error, throw it
+        throw primaryError;
+      }
+    }
+  }
+  
+  // If all keys failed, throw the last error
+  if (!geminiResponseText) {
+    throw lastError || new Error('All API keys exhausted');
+  }
+
+  // Add bot's response to history
+  history.push({
+    role: 'model',
+    parts: [{ text: geminiResponseText }]
+  });
+  
+  return geminiResponseText;
+}
+
+// Handle slash commands
+discordClient.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const { commandName } = interaction;
+
+  try {
+    if (commandName === 'ask') {
+      const question = interaction.options.getString('question');
+      await interaction.deferReply();
+      
+      console.log(`Received /ask from ${interaction.user.tag}: "${question}"`);
+      
+      const response = await getAIResponse(question, interaction.channel.id);
+      
+      // Handle Discord's 2000 character limit
+      const MAX_LENGTH = 2000;
+      if (response.length <= MAX_LENGTH) {
+        await interaction.editReply(response);
+      } else {
+        const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g')) || [];
+        await interaction.editReply(chunks[0]);
+        for (let i = 1; i < chunks.length; i++) {
+          await interaction.followUp(chunks[i]);
+        }
+      }
+    } 
+    else if (commandName === 'help') {
+      const helpMessage = `🤖 **Apler - Your AI Discord Companion**\n\nPowered by Google Gemini 2.5 Pro\n\n**How to use:**\n• Mention @apler with your question\n• Use \`/ask [question]\` to ask anything\n\n**Available Commands:**\n\`/ask\` - Ask Apler anything\n\`/clear\` - Reset conversation history for this channel (Admin only)\n\`/stats\` - View bot statistics\n\`/ping\` - Check bot response time\n\`/help\` - Show this message\n\nApler remembers your conversation in each channel!`;
+      
+      await interaction.reply({ content: helpMessage, ephemeral: true });
+    }
+    else if (commandName === 'clear') {
+      // Check if user has administrator permission
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({ content: '❌ Only server administrators can clear conversation history.', ephemeral: true });
+        return;
+      }
+      
+      if (conversationHistory.has(interaction.channel.id)) {
+        conversationHistory.delete(interaction.channel.id);
+        await interaction.reply('✅ Conversation history cleared for this channel! Starting fresh.');
+      } else {
+        await interaction.reply('ℹ️ No conversation history found for this channel.');
+      }
+    }
+    else if (commandName === 'stats') {
+      const uptime = Date.now() - botStartTime;
+      const days = Math.floor(uptime / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
+      
+      const channelCount = conversationHistory.size;
+      const memoryMB = (JSON.stringify(Array.from(conversationHistory.entries())).length / 1024 / 1024).toFixed(2);
+      
+      const statsMessage = `📊 **Apler Statistics**\n\n⏰ Uptime: ${days}d ${hours}h ${minutes}m\n🔑 API Keys: ${GEMINI_API_KEYS.length} loaded\n💬 Active Channels: ${channelCount} channels with conversation history\n💾 Memory: ${memoryMB} MB of conversation data\n🤖 Model: Gemini 2.5 Pro`;
+      
+      await interaction.reply({ content: statsMessage, ephemeral: true });
+    }
+    else if (commandName === 'ping') {
+      const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true, ephemeral: true });
+      const responseTime = sent.createdTimestamp - interaction.createdTimestamp;
+      await interaction.editReply(`🏓 Pong! Response time: **${responseTime}ms**`);
+    }
+  } catch (error) {
+    console.error(`Error handling /${commandName}:`, error);
+    const errorMessage = 'Sorry, I ran into an error. Please try again later.';
+    
+    if (interaction.deferred) {
+      await interaction.editReply(errorMessage);
+    } else {
+      await interaction.reply({ content: errorMessage, ephemeral: true });
+    }
+  }
 });
 
 discordClient.on('messageCreate', async (message) => {
@@ -111,77 +312,8 @@ discordClient.on('messageCreate', async (message) => {
 
       console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
-      // Get or create conversation history for this channel
-      if (!conversationHistory.has(message.channel.id)) {
-        conversationHistory.set(message.channel.id, {
-          history: [],
-          lastActivity: Date.now()
-        });
-      }
-      const channelData = conversationHistory.get(message.channel.id);
-      const history = channelData.history;
-      
-      // Update last activity timestamp
-      channelData.lastActivity = Date.now();
-
-      // Add user's message to history
-      history.push({
-        role: 'user',
-        parts: [{ text: userPrompt }]
-      });
-
-      // Keep only last 20 messages (10 exchanges) to avoid token limits
-      if (history.length > 20) {
-        history.splice(0, history.length - 20);
-      }
-
-      // 5. Call the Gemini API to get a response (with multiple API keys)
-      let geminiResponseText;
-      let usedModel = '';
-      
-      // Try all API keys in sequence until one works
-      let lastError = null;
-      for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
-        const modelIndex = currentKeyIndex;
-        const model = modelInstances[modelIndex];
-        getNextApiKey(); // Advance to next key for round-robin
-        const keyIndex = modelIndex + 1;
-        
-        try {
-          // Try model with conversation history
-          const chat = model.startChat({
-            history: history.slice(0, -1), // All messages except the current one
-          });
-          const result = await chat.sendMessage(userPrompt);
-          const response = await result.response;
-          geminiResponseText = response.text();
-          usedModel = `gemini-2.5-pro (API Key ${keyIndex})`;
-          console.log(`✓ Used: ${usedModel}`);
-          break; // Success, exit the loop
-        } catch (primaryError) {
-          // Check if it's a rate limit or quota error
-          if (primaryError.status === 429 || primaryError.status === 503 || 
-              (primaryError.message && primaryError.message.includes('quota'))) {
-            console.log(`✗ API Key ${keyIndex} rate limit reached, trying next key...`);
-            lastError = primaryError;
-            // Continue to next API key
-          } else {
-            // If it's not a rate limit error, throw it
-            throw primaryError;
-          }
-        }
-      }
-      
-      // If all keys failed, throw the last error
-      if (!geminiResponseText) {
-        throw lastError || new Error('All API keys exhausted');
-      }
-
-      // Add bot's response to history
-      history.push({
-        role: 'model',
-        parts: [{ text: geminiResponseText }]
-      });
+      // Use the helper function to get AI response
+      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id);
 
       // 6. Reply with the response, handling Discord's 2000 character limit
       const MAX_LENGTH = 2000;
