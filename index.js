@@ -77,7 +77,10 @@ function getNextApiKey() {
 // Pre-create all models at startup for reuse (optimization)
 const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
-  return ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+  return ai.getGenerativeModel({ 
+    model: 'gemini-2.5-pro',
+    systemInstruction: 'You are Apler, a helpful Discord bot. Keep responses concise and well-formatted. Use Discord markdown for better readability (** for bold, * for italic, ` for code, ``` for code blocks). Avoid unnecessarily long responses - be direct and clear. When listing options, keep them compact in a single message. Aim for responses under 1500 characters when possible.'
+  });
 });
 
 console.log(`Created ${modelInstances.length} model instance(s) for reuse`);
