@@ -158,8 +158,8 @@ discordClient.once('clientReady', async () => {
   await registerCommands();
 });
 
-// Helper function to get AI response with streaming support
-async function getAIResponse(userPrompt, channelId, userId = null, streamCallback = null) {
+// Helper function to get AI response
+async function getAIResponse(userPrompt, channelId, userId = null) {
   // Determine memory key based on channel's memory mode
   const memoryMode = channelMemoryMode.get(channelId) || 'channel'; // Default to channel mode
   const memoryKey = (memoryMode === 'user' && userId) ? userId : channelId;
@@ -189,7 +189,7 @@ async function getAIResponse(userPrompt, channelId, userId = null, streamCallbac
   }
 
   // Try all API keys in sequence until one works
-  let geminiResponseText = '';
+  let geminiResponseText;
   let usedModel = '';
   let lastError = null;
   
@@ -204,39 +204,9 @@ async function getAIResponse(userPrompt, channelId, userId = null, streamCallbac
       const chat = model.startChat({
         history: history.slice(0, -1), // All messages except the current one
       });
-      
-      if (streamCallback) {
-        // Streaming mode
-        const result = await chat.sendMessageStream(userPrompt);
-        let buffer = '';
-        let lastUpdate = Date.now();
-        const UPDATE_INTERVAL = 500; // Update every 500ms
-        
-        for await (const chunk of result.stream) {
-          const chunkText = chunk.text();
-          geminiResponseText += chunkText;
-          buffer += chunkText;
-          
-          // Update Discord message in bursts to avoid rate limits
-          const now = Date.now();
-          if (now - lastUpdate >= UPDATE_INTERVAL || buffer.length > 100) {
-            await streamCallback(geminiResponseText);
-            buffer = '';
-            lastUpdate = now;
-          }
-        }
-        
-        // Final update with complete response
-        if (buffer.length > 0) {
-          await streamCallback(geminiResponseText);
-        }
-      } else {
-        // Non-streaming mode (fallback)
-        const result = await chat.sendMessage(userPrompt);
-        const response = await result.response;
-        geminiResponseText = response.text();
-      }
-      
+      const result = await chat.sendMessage(userPrompt);
+      const response = await result.response;
+      geminiResponseText = response.text();
       usedModel = `gemini-2.5-pro (API Key ${keyIndex})`;
       console.log(`✓ Used: ${usedModel}`);
       break; // Success, exit the loop
@@ -281,33 +251,10 @@ discordClient.on('interactionCreate', async (interaction) => {
       
       console.log(`Received /ask from ${interaction.user.tag}: "${question}"`);
       
-      let lastContent = '';
+      const response = await getAIResponse(question, interaction.channel.id, interaction.user.id);
+      
+      // Handle Discord's 2000 character limit
       const MAX_LENGTH = 2000;
-      
-      // Stream callback to update the message in real-time
-      const streamCallback = async (currentText) => {
-        try {
-          // Only update if content changed and respect rate limits
-          if (currentText === lastContent) return;
-          
-          if (currentText.length <= MAX_LENGTH) {
-            await interaction.editReply(currentText + ' ▌'); // Add cursor to show it's typing
-            lastContent = currentText;
-          } else {
-            // For long responses, show first chunk with indicator
-            const preview = currentText.substring(0, MAX_LENGTH - 50) + '\n\n*[Response streaming...]*';
-            await interaction.editReply(preview);
-            lastContent = preview;
-          }
-        } catch (err) {
-          // Ignore rate limit errors during streaming
-          if (err.code !== 50035) console.error('Stream update error:', err);
-        }
-      };
-      
-      const response = await getAIResponse(question, interaction.channel.id, interaction.user.id, streamCallback);
-      
-      // Final update without cursor
       if (response.length <= MAX_LENGTH) {
         await interaction.editReply(response);
       } else {
@@ -422,39 +369,17 @@ discordClient.on('messageCreate', async (message) => {
 
       console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
-      // Send initial reply to edit later
-      const reply = await message.reply('*Thinking...*');
-      let lastContent = '';
+      // Use the helper function to get AI response
+      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id);
+
+      // 6. Reply with the response, handling Discord's 2000 character limit
       const MAX_LENGTH = 2000;
-      
-      // Stream callback to update the message in real-time
-      const streamCallback = async (currentText) => {
-        try {
-          if (currentText === lastContent) return;
-          
-          if (currentText.length <= MAX_LENGTH) {
-            await reply.edit(currentText + ' ▌'); // Add cursor
-            lastContent = currentText;
-          } else {
-            const preview = currentText.substring(0, MAX_LENGTH - 50) + '\n\n*[Response streaming...]*';
-            await reply.edit(preview);
-            lastContent = preview;
-          }
-        } catch (err) {
-          if (err.code !== 50035) console.error('Stream update error:', err);
-        }
-      };
-
-      // Use the helper function to get AI response with streaming
-      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id, streamCallback);
-
-      // Final update without cursor
       if (geminiResponseText.length <= MAX_LENGTH) {
-        await reply.edit(geminiResponseText);
+        await message.reply(geminiResponseText);
       } else {
         // If response is too long, split it into chunks
         const chunks = geminiResponseText.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g')) || [];
-        await reply.edit(chunks[0]); // Edit the initial reply
+        await message.reply(chunks[0]); // Reply to the first chunk
         for (let i = 1; i < chunks.length; i++) {
           await message.channel.send(chunks[i]); // Send follow-ups without replying
         }
