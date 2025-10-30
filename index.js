@@ -31,8 +31,31 @@ console.log(`Loaded ${GEMINI_API_KEYS.length} Gemini API key(s)`);
 let currentKeyIndex = 0;
 
 // Store conversation history per channel
-// Structure: { channelId: [{ role: 'user', parts: [{ text: '...' }] }, ...] }
+// Structure: { channelId: { history: [...], lastActivity: timestamp } }
 const conversationHistory = new Map();
+
+// Cleanup interval - Remove channels inactive for more than 30 days
+const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // Run cleanup daily (24 hours)
+const MAX_INACTIVITY = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+
+function cleanupOldChannels() {
+  const now = Date.now();
+  let cleaned = 0;
+  
+  for (const [channelId, data] of conversationHistory.entries()) {
+    if (now - data.lastActivity > MAX_INACTIVITY) {
+      conversationHistory.delete(channelId);
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`🧹 Cleaned up ${cleaned} inactive channel(s) (30+ days old)`);
+  }
+}
+
+// Run cleanup daily
+setInterval(cleanupOldChannels, CLEANUP_INTERVAL);
 
 // --- INITIALIZE CLIENTS ---
 // Setup Discord client with necessary permissions (intents)
@@ -51,13 +74,13 @@ function getNextApiKey() {
   return key;
 }
 
-// Function to create models for a given API key
-function createModelsForKey(apiKey) {
+// Pre-create all models at startup for reuse (optimization)
+const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
-  return {
-    primary: ai.getGenerativeModel({ model: 'gemini-2.5-pro' })
-  };
-}
+  return ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+});
+
+console.log(`Created ${modelInstances.length} model instance(s) for reuse`);
 
 // --- DISCORD BOT LOGIC ---
 discordClient.once('ready', () => {
@@ -87,9 +110,16 @@ discordClient.on('messageCreate', async (message) => {
 
       // Get or create conversation history for this channel
       if (!conversationHistory.has(message.channel.id)) {
-        conversationHistory.set(message.channel.id, []);
+        conversationHistory.set(message.channel.id, {
+          history: [],
+          lastActivity: Date.now()
+        });
       }
-      const history = conversationHistory.get(message.channel.id);
+      const channelData = conversationHistory.get(message.channel.id);
+      const history = channelData.history;
+      
+      // Update last activity timestamp
+      channelData.lastActivity = Date.now();
 
       // Add user's message to history
       history.push({
@@ -102,20 +132,21 @@ discordClient.on('messageCreate', async (message) => {
         history.splice(0, history.length - 20);
       }
 
-      // 5. Call the Gemini API to get a response (with multiple API keys and fallback)
+      // 5. Call the Gemini API to get a response (with multiple API keys)
       let geminiResponseText;
       let usedModel = '';
       
       // Try all API keys in sequence until one works
       let lastError = null;
       for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
-        const apiKey = getNextApiKey();
-        const models = createModelsForKey(apiKey);
-        const keyIndex = (currentKeyIndex === 0 ? GEMINI_API_KEYS.length : currentKeyIndex);
+        const modelIndex = currentKeyIndex;
+        const model = modelInstances[modelIndex];
+        getNextApiKey(); // Advance to next key for round-robin
+        const keyIndex = modelIndex + 1;
         
         try {
-          // Try primary model first (gemini-2.5-pro) with conversation history
-          const chat = models.primary.startChat({
+          // Try model with conversation history
+          const chat = model.startChat({
             history: history.slice(0, -1), // All messages except the current one
           });
           const result = await chat.sendMessage(userPrompt);
