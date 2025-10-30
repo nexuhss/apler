@@ -30,9 +30,13 @@ console.log(`Loaded ${GEMINI_API_KEYS.length} Gemini API key(s)`);
 // Round-robin index for cycling through API keys
 let currentKeyIndex = 0;
 
-// Store conversation history per channel
-// Structure: { channelId: { history: [...], lastActivity: timestamp } }
+// Store conversation history per channel or per user depending on channel settings
+// Structure: { channelId/userId: { history: [...], lastActivity: timestamp } }
 const conversationHistory = new Map();
+
+// Store memory mode settings per channel
+// Structure: { channelId: 'channel' | 'user' }
+const channelMemoryMode = new Map();
 
 // Cleanup interval - Remove channels inactive for more than 30 days
 const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // Run cleanup daily (24 hours)
@@ -108,6 +112,19 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   
   new SlashCommandBuilder()
+    .setName('memorymode')
+    .setDescription('Change memory mode for this channel (Admin only)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(option =>
+      option.setName('mode')
+        .setDescription('Memory tracking mode')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Channel (everyone shares memory)', value: 'channel' },
+          { name: 'User (separate memory per user)', value: 'user' }
+        )),
+  
+  new SlashCommandBuilder()
     .setName('stats')
     .setDescription('Show bot statistics'),
   
@@ -141,15 +158,19 @@ discordClient.once('ready', async () => {
 });
 
 // Helper function to get AI response
-async function getAIResponse(userPrompt, channelId) {
-  // Get or create conversation history for this channel
-  if (!conversationHistory.has(channelId)) {
-    conversationHistory.set(channelId, {
+async function getAIResponse(userPrompt, channelId, userId = null) {
+  // Determine memory key based on channel's memory mode
+  const memoryMode = channelMemoryMode.get(channelId) || 'channel'; // Default to channel mode
+  const memoryKey = memoryMode === 'user' ? userId : channelId;
+  
+  // Get or create conversation history for this key
+  if (!conversationHistory.has(memoryKey)) {
+    conversationHistory.set(memoryKey, {
       history: [],
       lastActivity: Date.now()
     });
   }
-  const channelData = conversationHistory.get(channelId);
+  const channelData = conversationHistory.get(memoryKey);
   const history = channelData.history;
   
   // Update last activity timestamp
@@ -229,7 +250,7 @@ discordClient.on('interactionCreate', async (interaction) => {
       
       console.log(`Received /ask from ${interaction.user.tag}: "${question}"`);
       
-      const response = await getAIResponse(question, interaction.channel.id);
+      const response = await getAIResponse(question, interaction.channel.id, interaction.user.id);
       
       // Handle Discord's 2000 character limit
       const MAX_LENGTH = 2000;
@@ -244,7 +265,7 @@ discordClient.on('interactionCreate', async (interaction) => {
       }
     } 
     else if (commandName === 'help') {
-      const helpMessage = `🤖 **Apler - Your AI Discord Companion**\n\nPowered by Google Gemini 2.5 Pro\n\n**How to use:**\n• Mention @apler with your question\n• Use \`/ask [question]\` to ask anything\n\n**Available Commands:**\n\`/ask\` - Ask Apler anything\n\`/clear\` - Reset conversation history for this channel (Admin only)\n\`/stats\` - View bot statistics\n\`/ping\` - Check bot response time\n\`/help\` - Show this message\n\nApler remembers your conversation in each channel!`;
+      const helpMessage = `🤖 **Apler - Your AI Discord Companion**\n\nPowered by Google Gemini 2.5 Pro\n\n**How to use:**\n• Mention @apler with your question\n• Use \`/ask [question]\` to ask anything\n\n**Available Commands:**\n\`/ask\` - Ask Apler anything\n\`/clear\` - Reset conversation history (Admin only)\n\`/memorymode\` - Change memory mode: channel or per-user (Admin only)\n\`/stats\` - View bot statistics\n\`/ping\` - Check bot response time\n\`/help\` - Show this message\n\nApler remembers conversations based on the channel's memory mode!`;
       
       await interaction.reply({ content: helpMessage, ephemeral: true });
     }
@@ -255,12 +276,47 @@ discordClient.on('interactionCreate', async (interaction) => {
         return;
       }
       
-      if (conversationHistory.has(interaction.channel.id)) {
-        conversationHistory.delete(interaction.channel.id);
-        await interaction.reply('✅ Conversation history cleared for this channel! Starting fresh.');
+      const memoryMode = channelMemoryMode.get(interaction.channel.id) || 'channel';
+      
+      if (memoryMode === 'channel') {
+        // Clear channel-wide history
+        if (conversationHistory.has(interaction.channel.id)) {
+          conversationHistory.delete(interaction.channel.id);
+          await interaction.reply('✅ Conversation history cleared for this channel! Starting fresh.');
+        } else {
+          await interaction.reply('ℹ️ No conversation history found for this channel.');
+        }
       } else {
-        await interaction.reply('ℹ️ No conversation history found for this channel.');
+        // Clear all user histories in this channel
+        let cleared = 0;
+        for (const [key] of conversationHistory.entries()) {
+          // In user mode, keys are user IDs, but we need to clear all related to this context
+          conversationHistory.delete(key);
+          cleared++;
+        }
+        await interaction.reply(`✅ Cleared ${cleared} user conversation histories! Starting fresh.`);
       }
+    }
+    else if (commandName === 'memorymode') {
+      // Check if user has administrator permission
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({ content: '❌ Only server administrators can change memory mode.', ephemeral: true });
+        return;
+      }
+      
+      const mode = interaction.options.getString('mode');
+      const oldMode = channelMemoryMode.get(interaction.channel.id) || 'channel';
+      
+      channelMemoryMode.set(interaction.channel.id, mode);
+      
+      let modeDescription = mode === 'channel' 
+        ? 'everyone in this channel shares the same conversation memory'
+        : 'each user has their own separate conversation memory';
+      
+      // Clear existing history when switching modes
+      conversationHistory.clear();
+      
+      await interaction.reply(`✅ Memory mode changed from **${oldMode}** to **${mode}**!\n\nNow ${modeDescription}. Previous conversation history has been cleared.`);
     }
     else if (commandName === 'stats') {
       const uptime = Date.now() - botStartTime;
@@ -313,7 +369,7 @@ discordClient.on('messageCreate', async (message) => {
       console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
       // Use the helper function to get AI response
-      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id);
+      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id);
 
       // 6. Reply with the response, handling Discord's 2000 character limit
       const MAX_LENGTH = 2000;
