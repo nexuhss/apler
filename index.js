@@ -161,7 +161,7 @@ discordClient.once('ready', async () => {
 async function getAIResponse(userPrompt, channelId, userId = null) {
   // Determine memory key based on channel's memory mode
   const memoryMode = channelMemoryMode.get(channelId) || 'channel'; // Default to channel mode
-  const memoryKey = memoryMode === 'user' ? userId : channelId;
+  const memoryKey = (memoryMode === 'user' && userId) ? userId : channelId;
   
   // Get or create conversation history for this key
   if (!conversationHistory.has(memoryKey)) {
@@ -391,6 +391,18 @@ discordClient.on('messageCreate', async (message) => {
   }
 });
 
+// Add error handlers to prevent crashes
+discordClient.on('error', error => {
+  console.error('Discord client error:', error);
+});
+
+process.on('unhandledRejection', error => {
+  console.error('Unhandled promise rejection:', error);
+});
+
 // --- LOGIN ---
 // Start the bot by logging in with your token
-discordClient.login(DISCORD_BOT_TOKEN);
+discordClient.login(DISCORD_BOT_TOKEN).catch(error => {
+  console.error('Failed to login:', error);
+  process.exit(1);
+});
