@@ -154,7 +154,7 @@ async function searchYouTube(channelName) {
   }
 }
 
-// YouTube video summarization function
+// YouTube video summarization function - UPDATED VERSION
 async function summarizeYouTubeVideo(videoUrl) {
   const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
   if (!YOUTUBE_API_KEY) {
@@ -196,24 +196,49 @@ async function summarizeYouTubeVideo(videoUrl) {
     let transcript = '';
     try {
       console.log(`Attempting to fetch transcript for video ID: ${videoId}`);
-      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
-      transcript = transcriptData.map(item => item.text).join(' ');
-      console.log(`Retrieved transcript (${transcript.length} characters)`);
-    } catch (error) {
-      console.log('Could not fetch transcript:', error.message);
-      transcript = '';
+
+      // Try with language preferences
+      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
+        lang: 'en', // Prefer English
+        country: 'US' // Sometimes helps with region issues
+      });
+
+      // Debug: log what we got
+      console.log(`Transcript data received: ${transcriptData.length} segments`);
+
+      if (transcriptData && transcriptData.length > 0) {
+        transcript = transcriptData.map(item => item.text).join(' ');
+        console.log(`Retrieved transcript (${transcript.length} characters)`);
+      } else {
+        console.log('Transcript data is empty array');
+      }
+    } catch (transcriptError) {
+      console.log('Transcript fetch error details:', transcriptError.message);
+
+      // Try without language preferences as fallback
+      try {
+        console.log('Retrying without language preferences...');
+        const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+        if (transcriptData && transcriptData.length > 0) {
+          transcript = transcriptData.map(item => item.text).join(' ');
+          console.log(`Retrieved transcript on retry (${transcript.length} characters)`);
+        }
+      } catch (retryError) {
+        console.log('Retry also failed:', retryError.message);
+        transcript = '';
+      }
     }
 
     // Format the response
     let summary = `**${title}**\nBy: ${channelTitle}\n\n`;
 
-    if (transcript) {
+    if (transcript && transcript.length > 0) {
       // If we have transcript, provide a summary based on it
       summary += `📝 **Transcript Summary:**\n${transcript.substring(0, 1500)}${transcript.length > 1500 ? '...' : ''}\n\n`;
     } else {
       // Fallback to description
       summary += `📝 **Description:**\n${description.substring(0, 1000)}${description.length > 1000 ? '...' : ''}\n\n`;
-      summary += `⚠️ *No transcript available for this video.*\n\n`;
+      summary += `⚠️ *Transcript unavailable (may be disabled by uploader or region-restricted).*\n\n`;
     }
 
     summary += `🔗 ${videoUrl}`;
