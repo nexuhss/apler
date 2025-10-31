@@ -468,6 +468,8 @@ discordClient.once('clientReady', async () => {
 
 // Helper function to get AI response
 async function getAIResponse(userPrompt, channelId, userId = null) {
+  console.log(`📥 Prompt from user ${userId || 'unknown'}: "${userPrompt.substring(0, 100)}${userPrompt.length > 100 ? '...' : ''}"`);
+  
   // Determine memory key based on channel's memory mode
   const memoryMode = channelMemoryMode.get(channelId) || 'channel'; // Default to channel mode
   const memoryKey = (memoryMode === 'user' && userId) ? userId : channelId;
@@ -523,6 +525,7 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
       while (response.functionCalls() && functionCallIterations < MAX_FUNCTION_CALLS) {
         functionCallIterations++;
         const functionCall = response.functionCalls()[0];
+        console.log(`🔧 Tool used: ${functionCall.name}`);
         
         let functionResponse;
         if (functionCall.name === 'search_web') {
