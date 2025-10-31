@@ -394,7 +394,7 @@ discordClient.on('interactionCreate', async (interaction) => {
     const errorMessage = 'Sorry, I ran into an error. Please try again later.';
     
     if (interaction.deferred) {
-      await interaction.editReply(errorMessage);
+      await interaction.editReply({ content: errorMessage, ephemeral: true });
     } else {
       await interaction.reply({ content: errorMessage, ephemeral: true });
     }
@@ -442,7 +442,9 @@ discordClient.on('messageCreate', async (message) => {
 
     } catch (error) {
       console.error("Error processing message:", error);
-      message.reply("Sorry, I ran into an error. Please try again later or check the server logs.");
+      const errorReply = await message.reply("Sorry, I ran into an error. Please try again later.");
+      // Delete error message after 10 seconds to reduce clutter
+      setTimeout(() => errorReply.delete().catch(() => {}), 10000);
     }
   }
 });
