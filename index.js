@@ -114,6 +114,43 @@ async function searchWeb(query) {
   }
 }
 
+// YouTube-specific search function
+async function searchYouTube(channelName) {
+  if (!GOOGLE_SEARCH_API_KEY || !GOOGLE_SEARCH_CX) {
+    return 'YouTube search is not configured.';
+  }
+
+  try {
+    // Search specifically on YouTube for the channel's latest videos
+    const query = `site:youtube.com ${channelName} latest videos`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_SEARCH_API_KEY}&cx=${GOOGLE_SEARCH_CX}&q=${encodeURIComponent(query)}&num=10&sort=date`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.error) {
+      console.error('YouTube search API error:', data.error);
+      return `YouTube search error: ${data.error.message}`;
+    }
+
+    if (!data.items || data.items.length === 0) {
+      return `No recent videos found for ${channelName}.`;
+    }
+
+    // Format YouTube results with focus on video titles and links
+    const results = data.items
+      .filter(item => item.link.includes('youtube.com/watch')) // Only actual video links
+      .slice(0, 5)
+      .map((item, index) => 
+        `${index + 1}. ${item.title}\n   ${item.snippet}\n   ${item.link}`
+      ).join('\n\n');
+
+    return results || `No recent videos found for ${channelName}.`;
+  } catch (error) {
+    console.error('YouTube search error:', error);
+    return `YouTube search failed: ${error.message}`;
+  }
+}
+
 // Define the search function declaration for Gemini
 const searchFunctionDeclaration = {
   name: 'search_web',
@@ -130,13 +167,29 @@ const searchFunctionDeclaration = {
   }
 };
 
+// YouTube search function declaration
+const youtubeSearchDeclaration = {
+  name: 'search_youtube',
+  description: 'Searches specifically for a YouTube channel\'s latest videos. ALWAYS use this when asked about a specific YouTuber\'s recent or latest videos, uploads, or content. This provides more accurate and recent results than general web search for YouTube-specific queries.',
+  parameters: {
+    type: 'object',
+    properties: {
+      channelName: {
+        type: 'string',
+        description: 'The name of the YouTube channel or YouTuber to search for'
+      }
+    },
+    required: ['channelName']
+  }
+};
+
 // Pre-create all models at startup for reuse (optimization)
 const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
   return ai.getGenerativeModel({ 
     model: 'gemini-2.5-pro',
-    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible. IMPORTANT: When asked about recent events, latest content, or anything time-sensitive, ALWAYS use the search_web function instead of relying on your training data.',
-    tools: [{ functionDeclarations: [searchFunctionDeclaration] }]
+    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible. IMPORTANT: When asked about recent events, latest content, or anything time-sensitive, ALWAYS use the appropriate search function instead of relying on your training data.',
+    tools: [{ functionDeclarations: [searchFunctionDeclaration, youtubeSearchDeclaration] }]
   });
 });
 
@@ -315,10 +368,13 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
       while (response.functionCalls() && functionCallIterations < MAX_FUNCTION_CALLS) {
         functionCallIterations++;
         const functionCall = response.functionCalls()[0];
+        console.log(`🔍 ${functionCall.name}("${functionCall.args.query || functionCall.args.channelName || JSON.stringify(functionCall.args)}")`);
         
         let functionResponse;
         if (functionCall.name === 'search_web') {
           functionResponse = await searchWeb(functionCall.args.query);
+        } else if (functionCall.name === 'search_youtube') {
+          functionResponse = await searchYouTube(functionCall.args.channelName);
         } else {
           functionResponse = 'Unknown function';
         }
