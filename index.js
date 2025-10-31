@@ -211,9 +211,10 @@ async function summarizeYouTubeVideo(videoUrl) {
         console.log(`Retrieved transcript via youtube-captions-scraper (${transcript.length} characters)`);
       } else {
         console.log('youtube-captions-scraper returned empty captions');
+        throw new Error('Empty captions returned');
       }
     } catch (scraperError) {
-      console.log('youtube-captions-scraper failed:', scraperError.message);
+      console.log('youtube-captions-scraper failed or returned empty:', scraperError.message);
 
       // Fallback: try youtube-transcript as backup
       try {
@@ -304,7 +305,7 @@ async function summarizeYouTubeVideo(videoUrl) {
     } else {
       // Fallback to description
       summary += `📝 **Description:**\n${description.substring(0, 1000)}${description.length > 1000 ? '...' : ''}\n\n`;
-      summary += `⚠️ *Transcript unavailable (may be disabled by uploader or region-restricted).*\n\n`;
+      summary += `⚠️ *Transcript unavailable for this video. Some creators disable programmatic access to captions entirely. The video description is shown above instead.*\n\n`;
     }
 
     summary += `🔗 ${videoUrl}`;
