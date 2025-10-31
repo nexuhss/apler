@@ -425,7 +425,15 @@ discordClient.on('messageCreate', async (message) => {
 
       // 4. Extract the user's prompt by removing only the bot's mention
       const botMentionPattern = new RegExp(`<@!?${discordClient.user.id}>`, 'g');
-      const userPrompt = message.content.replace(botMentionPattern, '').trim();
+      let userPrompt = message.content.replace(botMentionPattern, '').trim();
+
+      // Convert user mentions to readable format for the AI
+      if (message.mentions.users.size > 0) {
+        message.mentions.users.forEach(user => {
+          const mentionPattern = new RegExp(`<@!?${user.id}>`, 'g');
+          userPrompt = userPrompt.replace(mentionPattern, `@${user.username}`);
+        });
+      }
 
       if (!userPrompt) {
         message.reply("You mentioned me! Ask me anything.");
