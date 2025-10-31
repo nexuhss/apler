@@ -83,7 +83,7 @@ const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
   return ai.getGenerativeModel({ 
     model: 'gemini-2.5-pro',
-    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Be concise unless the user specifically requests detailed information. When providing long content like recipes or tutorials, format them clearly with proper sections and line breaks. Stay under 1800 characters when possible to fit in a single Discord message.'
+    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible.'
   });
 });
 
