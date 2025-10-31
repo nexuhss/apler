@@ -467,8 +467,8 @@ discordClient.once('clientReady', async () => {
 });
 
 // Helper function to get AI response
-async function getAIResponse(userPrompt, channelId, userId = null) {
-  console.log(`📥 Prompt from user ${userId || 'unknown'}: "${userPrompt.substring(0, 100)}${userPrompt.length > 100 ? '...' : ''}"`);
+async function getAIResponse(userPrompt, channelId, userId = null, userTag = null) {
+  console.log(`📥 Prompt from user ${userTag || 'unknown'}: "${userPrompt.substring(0, 100)}${userPrompt.length > 100 ? '...' : ''}"`);
   
   // Determine memory key based on channel's memory mode
   const memoryMode = channelMemoryMode.get(channelId) || 'channel'; // Default to channel mode
@@ -593,7 +593,7 @@ discordClient.on('interactionCreate', async (interaction) => {
       const reply = await interaction.fetchReply();
       await reply.react('<a:thinking:1433872234774003943>');
       
-      const response = await getAIResponse(question, interaction.channel.id, interaction.user.id);
+      const response = await getAIResponse(question, interaction.channel.id, interaction.user.id, interaction.user.tag);
       
       // Remove the thinking reaction
       const userReactions = reply.reactions.cache.filter(reaction => reaction.me);
@@ -735,7 +735,7 @@ discordClient.on('messageCreate', async (message) => {
       await message.react('<a:thinking:1433872234774003943>');
 
       // Use the helper function to get AI response
-      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id);
+      const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id, message.author.tag);
 
       // Remove the thinking reaction
       const userReactions = message.reactions.cache.filter(reaction => reaction.me);
