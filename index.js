@@ -33,8 +33,6 @@ if (!DISCORD_BOT_TOKEN || GEMINI_API_KEYS.length === 0) {
   process.exit(1);
 }
 
-console.log(`Loaded ${GEMINI_API_KEYS.length} Gemini API key(s)`);
-
 // Round-robin index for cycling through API keys
 let currentKeyIndex = 0;
 
@@ -60,10 +58,6 @@ function cleanupOldChannels() {
       channelMemoryMode.delete(channelId); // Also clean up memory mode settings
       cleaned++;
     }
-  }
-  
-  if (cleaned > 0) {
-    console.log(`🧹 Cleaned up ${cleaned} inactive channel(s) (30+ days old)`);
   }
 }
 
@@ -170,11 +164,9 @@ async function summarizeYouTubeVideo(videoUrl) {
       return 'Invalid YouTube URL. Please provide a valid YouTube video link.';
     }
     const videoId = videoIdMatch[1];
-    console.log(`Extracted video ID: ${videoId} from URL: ${videoUrl}`);
 
     // Get comprehensive video details
     const videoDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet,contentDetails,statistics`;
-    console.log(`Making API call to: ${videoDetailsUrl}`);
     const videoResponse = await fetch(videoDetailsUrl);
     const videoData = await videoResponse.json();
 
@@ -198,23 +190,15 @@ async function summarizeYouTubeVideo(videoUrl) {
     const likeCount = video.statistics?.likeCount || 'N/A';
     const duration = video.contentDetails?.duration || 'N/A';
 
-    console.log(`Found video: "${title}" by ${channelTitle}`);
-
     // Try to get transcript using Supadata API
     let transcript = '';
 
-    console.log('Attempting transcript extraction with Supadata API...');
-
     if (SUPADATA_API_KEY) {
-      console.log('Supadata API key is configured, proceeding with transcript request...');
       try {
         const supadataUrl = new URL('https://api.supadata.ai/v1/transcript');
         supadataUrl.searchParams.append('url', videoUrl);
         supadataUrl.searchParams.append('text', 'true');
         supadataUrl.searchParams.append('mode', 'auto');
-
-        console.log(`🚀 Supadata API Request: ${supadataUrl.toString().replace(SUPADATA_API_KEY, '[API_KEY]')}`);
-        console.log(`📹 Video URL: ${videoUrl}`);
 
         const supadataResponse = await fetch(supadataUrl.toString(), {
           method: 'GET',
@@ -223,34 +207,17 @@ async function summarizeYouTubeVideo(videoUrl) {
           }
         });
 
-        console.log(`📡 Supadata API Response Status: ${supadataResponse.status}`);
-
         if (supadataResponse.ok) {
           const supadataData = await supadataResponse.json();
-          console.log('📋 Supadata API Response Keys:', Object.keys(supadataData));
-          console.log('📊 Supadata API Full Response:', JSON.stringify(supadataData, null, 2));
 
           // Check if we got transcript data
           if (supadataData.content && supadataData.content.length > 0) {
             transcript = supadataData.content;
-            console.log(`✅ SUCCESS: Retrieved transcript via Supadata API (${transcript.length} characters)`);
-            console.log(`📝 Transcript Preview: "${transcript.substring(0, 200)}${transcript.length > 200 ? '...' : ''}"`);
-          } else {
-            console.log('❌ FAILURE: Supadata API returned empty content');
-            console.log('Response data:', supadataData);
           }
-        } else {
-          console.log(`❌ FAILURE: Supadata API returned HTTP ${supadataResponse.status}`);
-          const errorText = await supadataResponse.text();
-          console.log('Error response body:', errorText);
         }
       } catch (supadataError) {
-        console.log('💥 EXCEPTION: Supadata API request failed');
-        console.log('Error details:', supadataError.message);
-        console.log('Error stack:', supadataError.stack);
+        // Supadata failed, continue to fallback
       }
-    } else {
-      console.log('⚠️ WARNING: Supadata API key not configured');
     }
 
     // Format the response
@@ -262,7 +229,6 @@ async function summarizeYouTubeVideo(videoUrl) {
     summary += `⏱️ **Duration:** ${duration}\n\n`;
 
     if (transcript && transcript.length > 0) {
-      console.log('🎯 FINAL: Using transcript-based summarization');
       // If we got a transcript from Supadata, summarize it with AI
       try {
         const transcriptPrompt = `Please provide a concise summary of this YouTube video transcript. Focus on the main topics, key points, and overall message. Keep it to 2-3 sentences.
@@ -281,12 +247,10 @@ Transcript: ${transcript.substring(0, 5000)}${transcript.length > 5000 ? '...' :
         summary += `• Published ${new Date(publishedAt).toLocaleDateString()}\n`;
         summary += `• Duration: ${duration}\n\n`;
       } catch (aiError) {
-        console.log('AI transcript summary failed, using raw transcript:', aiError.message);
         // Fallback to showing part of the transcript
         summary += `📝 **Transcript (excerpt):**\n${transcript.substring(0, 1000)}${transcript.length > 1000 ? '...' : ''}\n\n`;
       }
     } else {
-      console.log('🎯 FINAL: Using metadata-based AI summarization (no transcript available)');
       // No transcript available, use AI to generate summary based on metadata
       try {
         const metadataPrompt = `Based on this YouTube video information, provide a brief, engaging summary of what this video is about:
@@ -312,7 +276,6 @@ Please write a concise 2-3 sentence summary that captures the main topic and val
         summary += `• Published ${new Date(publishedAt).toLocaleDateString()}\n`;
         summary += `• Duration: ${duration}\n\n`;
       } catch (aiError) {
-        console.log('AI summary failed, using metadata fallback:', aiError.message);
         // Fallback to metadata-only summary
         summary += `📝 **Video Summary:**\n`;
         summary += `This video appears to be about topics related to: ${tags.slice(0, 5).join(', ')}\n\n`;
@@ -390,8 +353,6 @@ const modelInstances = GEMINI_API_KEYS.map(apiKey => {
     tools: [{ functionDeclarations: [searchFunctionDeclaration, youtubeSearchDeclaration, youtubeSummarizeDeclaration] }]
   });
 });
-
-console.log(`Created ${modelInstances.length} model instance(s) for reuse`);
 
 // Bot start time for uptime tracking
 const botStartTime = Date.now();
@@ -488,14 +449,12 @@ const commands = [
 async function registerCommands() {
   try {
     const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
-    console.log('Registering slash commands...');
     
     await rest.put(
       Routes.applicationCommands(discordClient.user.id),
       { body: commands }
     );
     
-    console.log('✓ Slash commands registered successfully!');
   } catch (error) {
     console.error('Error registering commands:', error);
   }
@@ -504,8 +463,6 @@ async function registerCommands() {
 // --- DISCORD BOT LOGIC ---
 discordClient.once('clientReady', async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
-  console.log('Bot is ready and waiting for messages.');
-  console.log(`Bot is in ${discordClient.guilds.cache.size} server(s)`);
   await registerCommands();
 });
 
@@ -566,7 +523,6 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
       while (response.functionCalls() && functionCallIterations < MAX_FUNCTION_CALLS) {
         functionCallIterations++;
         const functionCall = response.functionCalls()[0];
-        console.log(`🔍 ${functionCall.name}("${functionCall.args.query || functionCall.args.channelName || JSON.stringify(functionCall.args)}")`);
         
         let functionResponse;
         if (functionCall.name === 'search_web') {
@@ -591,13 +547,11 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
       
       geminiResponseText = response.text();
       usedModel = `gemini-2.5-pro (API Key ${keyIndex})`;
-      console.log(`✓ Used: ${usedModel}`);
       break; // Success, exit the loop
     } catch (primaryError) {
       // Check if it's a rate limit or quota error
       if (primaryError.status === 429 || primaryError.status === 503 || 
           (primaryError.message && primaryError.message.includes('quota'))) {
-        console.log(`✗ API Key ${keyIndex} rate limit reached, trying next key...`);
         lastError = primaryError;
         // Continue to next API key
       } else {
@@ -631,8 +585,6 @@ discordClient.on('interactionCreate', async (interaction) => {
     if (commandName === 'ask') {
       const question = interaction.options.getString('question');
       await interaction.deferReply();
-      
-      console.log(`Received /ask from ${interaction.user.tag}: "${question}"`);
       
       // Fetch the deferred reply message and add thinking reaction
       const reply = await interaction.fetchReply();
@@ -775,8 +727,6 @@ discordClient.on('messageCreate', async (message) => {
         message.reply("You mentioned me! Ask me anything.");
         return;
       }
-
-      console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
       // React with thinking emoji
       await message.react('<a:thinking:1433872234774003943>');
