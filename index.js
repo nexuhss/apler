@@ -161,15 +161,17 @@ async function summarizeYouTubeVideo(videoUrl) {
   }
 
   try {
-    // Extract video ID from URL
-    const videoIdMatch = videoUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    // Extract video ID from URL - support multiple YouTube URL formats
+    const videoIdMatch = videoUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/);
     if (!videoIdMatch) {
       return 'Invalid YouTube URL. Please provide a valid YouTube video link.';
     }
     const videoId = videoIdMatch[1];
+    console.log(`Extracted video ID: ${videoId} from URL: ${videoUrl}`);
 
-    // First, get video details and check for captions
+    // First, get video details
     const videoDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet,contentDetails`;
+    console.log(`Making API call to: ${videoDetailsUrl}`);
     const videoResponse = await fetch(videoDetailsUrl);
     const videoData = await videoResponse.json();
 
@@ -179,6 +181,7 @@ async function summarizeYouTubeVideo(videoUrl) {
     }
 
     if (!videoData.items || videoData.items.length === 0) {
+      console.log(`No video found for ID: ${videoId}`);
       return 'Video not found or is private/unavailable.';
     }
 
@@ -186,80 +189,7 @@ async function summarizeYouTubeVideo(videoUrl) {
     const title = video.snippet.title;
     const description = video.snippet.description;
     const channelTitle = video.snippet.channelTitle;
-
-    // Try to get captions/transcript
-    const captionsUrl = `https://www.googleapis.com/youtube/v3/captions?videoId=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet`;
-    const captionsResponse = await fetch(captionsUrl);
-    const captionsData = await captionsResponse.json();
-
-    let transcript = '';
-    if (captionsData.items && captionsData.items.length > 0) {
-      // Get the first available caption track (usually English)
-      const captionTrack = captionsData.items.find(track => track.snippet.language === 'en') || captionsData.items[0];
-      if (captionTrack) {
-        const captionId = captionTrack.id;
-        const transcriptUrl = `https://www.googleapis.com/youtube/v3/captions/${captionId}?key=${YOUTUBE_API_KEY}`;
-        try {
-          const transcriptResponse = await fetch(transcriptUrl);
-          const transcriptData = await transcriptResponse.json();
-          if (transcriptData) {
-            transcript = transcriptData; // This would be the raw transcript data
-          }
-        } catch (transcriptError) {
-          console.log('Could not fetch transcript, using description only');
-        }
-      }
-    }
-
-    // Prepare content for summarization
-    const contentToSummarize = `
-Video Title: ${title}
-Channel: ${channelTitle}
-Description: ${description.substring(0, 1000)}${description.length > 1000 ? '...' : ''}
-${transcript ? `Transcript: ${transcript.substring(0, 2000)}${transcript.length > 2000 ? '...' : ''}` : ''}
-    `.trim();
-
-    // If we have transcript, we can provide a better summary
-    // For now, return basic info + note about summarization capability
-    const summary = `**${title}**\nBy: ${channelTitle}\n\n${description.substring(0, 500)}${description.length > 500 ? '...' : ''}\n\n${transcript ? '📝 Transcript available for detailed summarization' : '📝 No transcript available - summary based on description only'}\n\n🔗 ${videoUrl}`;
-
-    return summary;
-
-  } catch (error) {
-    console.error('YouTube summarization error:', error);
-    return `Failed to summarize video: ${error.message}`;
-  }
-}
-async function summarizeYouTubeVideo(videoUrl) {
-  if (!YOUTUBE_API_KEY) {
-    return 'YouTube API is not configured. Please add YOUTUBE_API_KEY to environment variables.';
-  }
-
-  try {
-    // Extract video ID from URL
-    const videoIdMatch = videoUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
-    if (!videoIdMatch) {
-      return 'Invalid YouTube URL. Please provide a valid YouTube video link.';
-    }
-    const videoId = videoIdMatch[1];
-
-    // First, get video details and check if captions are available
-    const videoDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet,contentDetails`;
-    const videoResponse = await fetch(videoDetailsUrl);
-    const videoData = await videoResponse.json();
-
-    if (videoData.error) {
-      console.error('YouTube API error:', videoData.error);
-      return `YouTube API error: ${videoData.error.message}`;
-    }
-
-    if (!videoData.items || videoData.items.length === 0) {
-      return 'Video not found or is private/unavailable.';
-    }
-
-    const video = videoData.items[0];
-    const title = video.snippet.title;
-    const description = video.snippet.description;
+    console.log(`Found video: "${title}" by ${channelTitle}`);
 
     // Try to get captions/transcript
     const captionsUrl = `https://www.googleapis.com/youtube/v3/captions?videoId=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet`;
@@ -269,8 +199,13 @@ async function summarizeYouTubeVideo(videoUrl) {
     let transcript = '';
 
     if (captionsData.items && captionsData.items.length > 0) {
-      // Get the first available caption track
-      const captionTrack = captionsData.items.find(track => track.snippet.language === 'en' || track.snippet.language.startsWith('en'));
+      // Get the first available English caption track
+      const captionTrack = captionsData.items.find(track =>
+        track.snippet.language === 'en' ||
+        track.snippet.language.startsWith('en') ||
+        track.snippet.language === 'en-US' ||
+        track.snippet.language === 'en-GB'
+      ) || captionsData.items[0];
 
       if (captionTrack) {
         try {
@@ -284,8 +219,14 @@ async function summarizeYouTubeVideo(videoUrl) {
 
           if (transcriptResponse.ok) {
             const transcriptData = await transcriptResponse.text();
-            // Parse the transcript (YouTube returns it in a specific format)
-            transcript = transcriptData;
+            // YouTube returns transcript in WebVTT format, clean it up
+            transcript = transcriptData
+              .replace(/WEBVTT\s*\n/, '') // Remove WebVTT header
+              .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\s*\n/g, '') // Remove timestamps
+              .replace(/\n+/g, ' ') // Replace multiple newlines with spaces
+              .replace(/<[^>]*>/g, '') // Remove HTML tags
+              .trim();
+            console.log(`Retrieved transcript (${transcript.length} characters)`);
           }
         } catch (error) {
           console.log('Could not fetch transcript, using description only');
@@ -293,19 +234,21 @@ async function summarizeYouTubeVideo(videoUrl) {
       }
     }
 
-    // If we have transcript, use it for summarization
-    if (transcript) {
-      // Clean up the transcript (remove timestamps and format)
-      const cleanTranscript = transcript
-        .replace(/\d{2}:\d{2}:\d{2}\.\d{3}/g, '') // Remove timestamps
-        .replace(/\n+/g, ' ') // Replace newlines with spaces
-        .trim();
+    // Format the response
+    let summary = `**${title}**\nBy: ${channelTitle}\n\n`;
 
-      return `Video Title: ${title}\n\nTranscript Summary: ${cleanTranscript.substring(0, 2000)}...`;
+    if (transcript) {
+      // If we have transcript, provide a summary based on it
+      summary += `📝 **Transcript Summary:**\n${transcript.substring(0, 1500)}${transcript.length > 1500 ? '...' : ''}\n\n`;
     } else {
-      // Fallback to description-based summary
-      return `Video Title: ${title}\n\nDescription: ${description.substring(0, 1000)}\n\nNote: No transcript available for this video.`;
+      // Fallback to description
+      summary += `📝 **Description:**\n${description.substring(0, 1000)}${description.length > 1000 ? '...' : ''}\n\n`;
+      summary += `⚠️ *No transcript available for this video.*\n\n`;
     }
+
+    summary += `🔗 ${videoUrl}`;
+
+    return summary;
 
   } catch (error) {
     console.error('YouTube summarization error:', error);
