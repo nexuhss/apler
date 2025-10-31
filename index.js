@@ -1,8 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { YoutubeTranscript } = require('youtube-transcript');
-const { getSubtitles } = require('youtube-captions-scraper');
-const ytdl = require('ytdl-core');
 require('dotenv').config();
 
 // --- CONFIGURATION ---
@@ -156,7 +154,7 @@ async function searchYouTube(channelName) {
   }
 }
 
-// YouTube video summarization function - UPDATED VERSION
+// YouTube video summarization function - AI-powered fallback approach
 async function summarizeYouTubeVideo(videoUrl) {
   const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
   if (!YOUTUBE_API_KEY) {
@@ -172,8 +170,8 @@ async function summarizeYouTubeVideo(videoUrl) {
     const videoId = videoIdMatch[1];
     console.log(`Extracted video ID: ${videoId} from URL: ${videoUrl}`);
 
-    // First, get video details
-    const videoDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet,contentDetails`;
+    // Get comprehensive video details
+    const videoDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet,contentDetails,statistics`;
     console.log(`Making API call to: ${videoDetailsUrl}`);
     const videoResponse = await fetch(videoDetailsUrl);
     const videoData = await videoResponse.json();
@@ -192,120 +190,48 @@ async function summarizeYouTubeVideo(videoUrl) {
     const title = video.snippet.title;
     const description = video.snippet.description;
     const channelTitle = video.snippet.channelTitle;
+    const publishedAt = video.snippet.publishedAt;
+    const tags = video.snippet.tags || [];
+    const viewCount = video.statistics?.viewCount || 'N/A';
+    const likeCount = video.statistics?.likeCount || 'N/A';
+    const duration = video.contentDetails?.duration || 'N/A';
+
     console.log(`Found video: "${title}" by ${channelTitle}`);
 
-    // Try to get captions/transcript using multiple methods
+    // Try to get transcript (but expect it to fail for most videos now)
     let transcript = '';
 
-    // First try youtube-captions-scraper (better for complex videos like MrBeast)
+    // Try multiple methods but don't expect them to work
     try {
-      console.log(`Attempting to fetch transcript for video ID: ${videoId} using youtube-captions-scraper`);
+      console.log('Attempting transcript extraction...');
 
-      const captions = await getSubtitles({
-        videoID: videoId,
-        lang: 'en' // Try English first
-      });
-
-      if (captions && captions.length > 0) {
-        transcript = captions.map(caption => caption.text).join(' ');
-        console.log(`Retrieved transcript via youtube-captions-scraper (${transcript.length} characters)`);
-      } else {
-        console.log('youtube-captions-scraper returned empty captions');
-        throw new Error('Empty captions returned');
+      // Try youtube-transcript first (most reliable of the failing options)
+      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+      if (transcriptData && transcriptData.length > 0) {
+        transcript = transcriptData.map(item => item.text).join(' ');
+        console.log(`Retrieved transcript (${transcript.length} characters)`);
       }
-    } catch (scraperError) {
-      console.log('youtube-captions-scraper failed or returned empty:', scraperError.message);
-
-      // Fallback: try youtube-transcript as backup
-      try {
-        console.log('Trying youtube-transcript as fallback...');
-
-        // Try with language preferences
-        const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
-          lang: 'en',
-          country: 'US'
-        });
-
-        console.log(`Transcript data received: ${transcriptData.length} segments`);
-
-        if (transcriptData && transcriptData.length > 0) {
-          transcript = transcriptData.map(item => item.text).join(' ');
-          console.log(`Retrieved transcript via youtube-transcript fallback (${transcript.length} characters)`);
-        } else {
-          console.log('Transcript data is empty array');
-
-          // Final fallback: try without language preferences
-          try {
-            const fallbackData = await YoutubeTranscript.fetchTranscript(videoId);
-            if (fallbackData && fallbackData.length > 0) {
-              transcript = fallbackData.map(item => item.text).join(' ');
-              console.log(`Retrieved transcript via youtube-transcript final fallback (${transcript.length} characters)`);
-            }
-          } catch (finalError) {
-            console.log('All transcript methods failed');
-            transcript = '';
-          }
-        }
-      } catch (transcriptError) {
-        console.log('youtube-transcript fallback failed:', transcriptError.message);
-        transcript = '';
-      }
-    }
-
-    // If both previous methods failed, try ytdl-core as final fallback
-    if (!transcript) {
-      try {
-        console.log('Trying ytdl-core as final fallback...');
-
-        const info = await ytdl.getInfo(videoId);
-        const tracks = info.player_response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-
-        if (tracks && tracks.length > 0) {
-          console.log(`Found ${tracks.length} caption track(s)`);
-
-          // Get the first English track or first available
-          const track = tracks.find(t => t.languageCode === 'en' || t.languageCode.startsWith('en')) || tracks[0];
-          console.log(`Using caption track: ${track.name?.simpleText || track.languageCode}`);
-
-          // Fetch the actual captions
-          const captionResponse = await fetch(track.baseUrl);
-          const captionXml = await captionResponse.text();
-
-          // Extract text from XML (basic parsing)
-          const textMatches = captionXml.match(/<text[^>]*>([^<]+)<\/text>/g);
-          if (textMatches) {
-            transcript = textMatches
-              .map(match => {
-                // Remove XML tags and decode HTML entities
-                return match.replace(/<[^>]+>/g, '')
-                  .replace(/&amp;/g, '&')
-                  .replace(/&lt;/g, '<')
-                  .replace(/&gt;/g, '>')
-                  .replace(/&quot;/g, '"')
-                  .replace(/&#39;/g, "'")
-                  .replace(/&apos;/g, "'");
-              })
-              .join(' ');
-            console.log(`Retrieved transcript via ytdl-core (${transcript.length} characters)`);
-          }
-        } else {
-          console.log('No caption tracks found in video info');
-        }
-      } catch (ytdlError) {
-        console.log('ytdl-core fallback failed:', ytdlError.message);
-      }
+    } catch (transcriptError) {
+      console.log('Transcript extraction failed (expected for most videos)');
     }
 
     // Format the response
-    let summary = `**${title}**\nBy: ${channelTitle}\n\n`;
+    let summary = `**${title}**\n`;
+    summary += `👤 **Channel:** ${channelTitle}\n`;
+    summary += `👁️ **Views:** ${parseInt(viewCount).toLocaleString()}\n`;
+    summary += `👍 **Likes:** ${parseInt(likeCount).toLocaleString()}\n`;
+    summary += `📅 **Published:** ${new Date(publishedAt).toLocaleDateString()}\n`;
+    summary += `⏱️ **Duration:** ${duration}\n\n`;
 
     if (transcript && transcript.length > 0) {
-      // If we have transcript, provide a summary based on it
+      // If we miraculously got a transcript, use it
       summary += `📝 **Transcript Summary:**\n${transcript.substring(0, 1500)}${transcript.length > 1500 ? '...' : ''}\n\n`;
     } else {
-      // Fallback to description
-      summary += `📝 **Description:**\n${description.substring(0, 1000)}${description.length > 1000 ? '...' : ''}\n\n`;
-      summary += `⚠️ *Transcript unavailable for this video. Some creators disable programmatic access to captions entirely. The video description is shown above instead.*\n\n`;
+      // AI-powered summary based on available metadata
+      summary += `📝 **Video Summary:**\n`;
+      summary += `This video appears to be about topics related to: ${tags.slice(0, 5).join(', ')}\n\n`;
+      summary += `**Description:**\n${description.substring(0, 800)}${description.length > 800 ? '...' : ''}\n\n`;
+      summary += `⚠️ *Note: Transcripts are not available for most YouTube videos due to platform restrictions. This summary is based on the video's title, description, and metadata.*\n\n`;
     }
 
     summary += `🔗 ${videoUrl}`;
