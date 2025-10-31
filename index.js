@@ -83,7 +83,7 @@ const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
   return ai.getGenerativeModel({ 
     model: 'gemini-2.5-pro',
-    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses concise and well-formatted. Use Discord markdown for better readability (** for bold, * for italic, ` for code, ``` for code blocks). Avoid unnecessarily long responses - be direct and clear. When listing options, keep them compact in a single message. Aim for responses under 1500 characters when possible.'
+    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Be concise unless the user specifically requests detailed information. When providing long content like recipes or tutorials, format them clearly with proper sections and line breaks. Stay under 1800 characters when possible to fit in a single Discord message.'
   });
 });
 
@@ -91,6 +91,53 @@ console.log(`Created ${modelInstances.length} model instance(s) for reuse`);
 
 // Bot start time for uptime tracking
 const botStartTime = Date.now();
+
+// Smart message splitting function that respects Discord's 2000 char limit
+function splitMessage(text, maxLength = 2000) {
+  if (text.length <= maxLength) return [text];
+  
+  const chunks = [];
+  let remaining = text;
+  
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+    
+    // Try to split at paragraph break first
+    let splitPos = remaining.lastIndexOf('\n\n', maxLength);
+    
+    // If no paragraph break, try newline
+    if (splitPos === -1 || splitPos < maxLength / 2) {
+      splitPos = remaining.lastIndexOf('\n', maxLength);
+    }
+    
+    // If no newline, try sentence end
+    if (splitPos === -1 || splitPos < maxLength / 2) {
+      splitPos = Math.max(
+        remaining.lastIndexOf('. ', maxLength),
+        remaining.lastIndexOf('! ', maxLength),
+        remaining.lastIndexOf('? ', maxLength)
+      );
+    }
+    
+    // Last resort: split at space
+    if (splitPos === -1 || splitPos < maxLength / 2) {
+      splitPos = remaining.lastIndexOf(' ', maxLength);
+    }
+    
+    // Absolute last resort: hard split
+    if (splitPos === -1) {
+      splitPos = maxLength;
+    }
+    
+    chunks.push(remaining.substring(0, splitPos).trim());
+    remaining = remaining.substring(splitPos).trim();
+  }
+  
+  return chunks;
+}
 
 // --- SLASH COMMANDS SETUP ---
 const commands = [
@@ -263,16 +310,11 @@ discordClient.on('interactionCreate', async (interaction) => {
         await reaction.users.remove(discordClient.user.id);
       }
       
-      // Handle Discord's 2000 character limit
-      const MAX_LENGTH = 2000;
-      if (response.length <= MAX_LENGTH) {
-        await interaction.editReply(response);
-      } else {
-        const chunks = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g')) || [];
-        await interaction.editReply(chunks[0]);
-        for (let i = 1; i < chunks.length; i++) {
-          await interaction.followUp(chunks[i]);
-        }
+      // Handle Discord's 2000 character limit with smart splitting
+      const chunks = splitMessage(response);
+      await interaction.editReply(chunks[0]);
+      for (let i = 1; i < chunks.length; i++) {
+        await interaction.followUp(chunks[i]);
       }
     } 
     else if (commandName === 'help') {
@@ -391,17 +433,11 @@ discordClient.on('messageCreate', async (message) => {
         await reaction.users.remove(discordClient.user.id);
       }
 
-      // 6. Reply with the response, handling Discord's 2000 character limit
-      const MAX_LENGTH = 2000;
-      if (geminiResponseText.length <= MAX_LENGTH) {
-        await message.reply(geminiResponseText);
-      } else {
-        // If response is too long, split it into chunks
-        const chunks = geminiResponseText.match(new RegExp(`.{1,${MAX_LENGTH}}`, 'g')) || [];
-        await message.reply(chunks[0]); // Reply to the first chunk
-        for (let i = 1; i < chunks.length; i++) {
-          await message.channel.send(chunks[i]); // Send follow-ups without replying
-        }
+      // Reply with the response, handling Discord's 2000 character limit with smart splitting
+      const chunks = splitMessage(geminiResponseText);
+      await message.reply(chunks[0]);
+      for (let i = 1; i < chunks.length; i++) {
+        await message.channel.send(chunks[i]); // Send follow-ups without replying
       }
 
     } catch (error) {
