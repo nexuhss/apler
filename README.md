@@ -16,7 +16,8 @@ A smart Discord bot powered by Google's Gemini 2.5 Pro AI. Use slash commands or
 
 - 🧠 **Powered by Gemini 2.5 Pro**: Uses Google's most advanced AI model for high-quality responses
 - 🔍 **Web Search Integration**: Automatically searches Google for current information, weather, news, and real-time data
-- � **Flexible Memory Modes**: Choose between channel-wide or per-user conversation memory
+- 📹 **YouTube Video Summarization**: Can summarize YouTube videos using transcripts and descriptions
+- 💭 **Flexible Memory Modes**: Choose between channel-wide or per-user conversation memory
 - 🔄 **Multi-Key Load Balancing**: Rotates through 5 API keys to maximize uptime and avoid rate limits
 - ⚡ **Slash Commands**: Modern Discord commands for clean interactions
 - 📝 **Smart Message Splitting**: Automatically splits long responses at natural boundaries
@@ -42,10 +43,11 @@ A smart Discord bot powered by Google's Gemini 2.5 Pro AI. Use slash commands or
 @apler What's the capital of France?
 @apler Tell me something interesting about it
 @apler How's the weather in Tokyo today?
+@apler Summarize this video: https://youtube.com/watch?v=...
 @apler Help me write a Python function to sort a list
 ```
 
-Apler remembers your conversation and can search the web when needed!
+Apler remembers your conversation and can search the web or summarize videos when needed!
 
 ## 🎮 Commands
 
@@ -82,6 +84,10 @@ Sends message to Gemini 2.5 Pro (round-robin across 5 API keys)
        ↓                                    ↓
       No                           Results sent back to AI
        ↓                                    ↓
+   AI needs video summary? ──Yes──→ Gets YouTube transcript & summarizes
+       ↓                                    ↓
+      No                           Summary sent back to AI
+       ↓                                    ↓
    Success? ──Yes──→ Remove emoji & send formatted response
        ↓
       No (rate limit)
@@ -94,6 +100,7 @@ Repeat until success or all keys exhausted
 ## 🎯 What Makes Apler Special
 
 - **Always Up-to-Date**: Automatically searches the web for current information when needed
+- **Video Summarization**: Can summarize YouTube videos using transcripts and descriptions
 - **Reliable**: Multiple API keys ensure the bot stays responsive even during high usage
 - **Smart Memory**: Remembers conversations and adapts to your server's needs
 - **User-Friendly**: Clean slash commands and natural conversation flow
