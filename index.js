@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { YoutubeTranscript } = require('youtube-transcript');
 require('dotenv').config();
 
 // --- CONFIGURATION ---
@@ -191,47 +192,16 @@ async function summarizeYouTubeVideo(videoUrl) {
     const channelTitle = video.snippet.channelTitle;
     console.log(`Found video: "${title}" by ${channelTitle}`);
 
-    // Try to get captions/transcript
-    const captionsUrl = `https://www.googleapis.com/youtube/v3/captions?videoId=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet`;
-    const captionsResponse = await fetch(captionsUrl);
-    const captionsData = await captionsResponse.json();
-
+    // Try to get captions/transcript using youtube-transcript package
     let transcript = '';
-
-    if (captionsData.items && captionsData.items.length > 0) {
-      // Get the first available English caption track
-      const captionTrack = captionsData.items.find(track =>
-        track.snippet.language === 'en' ||
-        track.snippet.language.startsWith('en') ||
-        track.snippet.language === 'en-US' ||
-        track.snippet.language === 'en-GB'
-      ) || captionsData.items[0];
-
-      if (captionTrack) {
-        try {
-          // Download the transcript
-          const transcriptUrl = `https://www.googleapis.com/youtube/v3/captions/${captionTrack.id}?key=${YOUTUBE_API_KEY}`;
-          const transcriptResponse = await fetch(transcriptUrl, {
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
-
-          if (transcriptResponse.ok) {
-            const transcriptData = await transcriptResponse.text();
-            // YouTube returns transcript in WebVTT format, clean it up
-            transcript = transcriptData
-              .replace(/WEBVTT\s*\n/, '') // Remove WebVTT header
-              .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\s*\n/g, '') // Remove timestamps
-              .replace(/\n+/g, ' ') // Replace multiple newlines with spaces
-              .replace(/<[^>]*>/g, '') // Remove HTML tags
-              .trim();
-            console.log(`Retrieved transcript (${transcript.length} characters)`);
-          }
-        } catch (error) {
-          console.log('Could not fetch transcript, using description only');
-        }
-      }
+    try {
+      console.log(`Attempting to fetch transcript for video ID: ${videoId}`);
+      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+      transcript = transcriptData.map(item => item.text).join(' ');
+      console.log(`Retrieved transcript (${transcript.length} characters)`);
+    } catch (error) {
+      console.log('Could not fetch transcript:', error.message);
+      transcript = '';
     }
 
     // Format the response
