@@ -396,14 +396,14 @@ discordClient.on('interactionCreate', async (interaction) => {
     try {
       if (interaction.deferred) {
         await interaction.editReply(errorMessage);
-        // Delete the error after 10 seconds
+        // Delete the error after 5 seconds
         setTimeout(async () => {
           try {
             await interaction.deleteReply();
           } catch (e) {
             console.error('Failed to delete error reply:', e);
           }
-        }, 10000);
+        }, 5000);
       } else {
         await interaction.reply({ content: errorMessage, ephemeral: true });
       }
@@ -455,14 +455,14 @@ discordClient.on('messageCreate', async (message) => {
     } catch (error) {
       console.error("Error processing message:", error);
       const errorReply = await message.reply("Sorry, I ran into an error. Please try again later.");
-      // Delete error message after 10 seconds to reduce clutter
+      // Delete error message after 5 seconds to reduce clutter
       setTimeout(async () => {
         try {
           await errorReply.delete();
         } catch (e) {
           console.error('Failed to delete error message:', e);
         }
-      }, 10000);
+      }, 5000);
     }
   }
 });
