@@ -423,8 +423,9 @@ discordClient.on('messageCreate', async (message) => {
       // 3. Show a "typing..." indicator to the user
       await message.channel.sendTyping();
 
-      // 4. Extract the user's prompt by removing the bot mention
-      const userPrompt = message.content.replace(/<@!?\d+>/g, '').trim();
+      // 4. Extract the user's prompt by removing only the bot's mention
+      const botMentionPattern = new RegExp(`<@!?${discordClient.user.id}>`, 'g');
+      const userPrompt = message.content.replace(botMentionPattern, '').trim();
 
       if (!userPrompt) {
         message.reply("You mentioned me! Ask me anything.");
