@@ -154,7 +154,7 @@ async function searchYouTube(channelName) {
 // Define the search function declaration for Gemini
 const searchFunctionDeclaration = {
   name: 'search_web',
-  description: 'Searches the web for current, real-time information. ALWAYS use this function when asked about: current events, recent news, latest videos/posts, weather, live data, anything happening after your training data cutoff, or any time-sensitive information. Do NOT rely on your training data for recent information - always search instead.',
+  description: 'Performs a web search using Google to find current, time-sensitive, or frequently-changing information. USE THIS TOOL WHEN: (1) The user asks about anything time-sensitive or current (news, weather, sports scores, stock prices, "latest/recent/current" anything), (2) Information that changes frequently (prices, availability, schedules, rankings), (3) Events or facts after your knowledge cutoff date, (4) Real-time data or live information, (5) Verification of current facts that may have changed, (6) Specific recent events, announcements, or updates. ALWAYS USE for: questions with temporal indicators like "today", "now", "current", "latest", "2024/2025", "this week/month/year". When in doubt about whether information might have changed, use the search to ensure accuracy.',
   parameters: {
     type: 'object',
     properties: {
@@ -170,7 +170,7 @@ const searchFunctionDeclaration = {
 // YouTube search function declaration
 const youtubeSearchDeclaration = {
   name: 'search_youtube',
-  description: 'Searches specifically for a YouTube channel\'s latest videos. ALWAYS use this when asked about a specific YouTuber\'s recent or latest videos, uploads, or content. This provides more accurate and recent results than general web search for YouTube-specific queries.',
+  description: 'Searches specifically for YouTube videos, channels, and content. USE THIS TOOL WHEN: (1) User asks about any YouTube channel, YouTuber, or content creator, (2) Requests for "latest/recent/new videos" from a specific creator, (3) Questions about video uploads, subscriber counts, or channel statistics, (4) Looking for specific YouTube videos or series, (5) Checking what content a YouTuber has posted, (6) Finding YouTube tutorials, reviews, or entertainment content. TRIGGER WORDS: "YouTube", "YouTuber", "channel", "videos", "uploads", "subscribers", "content creator", "vlog", "let\'s play", or any known YouTuber name. This tool searches YouTube\'s platform directly for the most current video content and channel information.',
   parameters: {
     type: 'object',
     properties: {
@@ -188,7 +188,7 @@ const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
   return ai.getGenerativeModel({ 
     model: 'gemini-2.5-pro',
-    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible. IMPORTANT: When asked about recent events, latest content, or anything time-sensitive, ALWAYS use the appropriate search function instead of relying on your training data.',
+    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible. You have two search tools: search_web for general web searches, and search_youtube specifically for YouTube content. Choose the right tool based on the query type.',
     tools: [{ functionDeclarations: [searchFunctionDeclaration, youtubeSearchDeclaration] }]
   });
 });
