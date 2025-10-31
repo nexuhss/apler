@@ -13,10 +13,7 @@ require('dotenv').config();
 // GOOGLE_SEARCH_CX=your_custom_search_engine_id
 // YOUTUBE_API_KEY=your_youtube_data_api_key
 
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const GOOGLE_SEARCH_API_KEY = process.env.GOOGLE_SEARCH_API_KEY;
-const GOOGLE_SEARCH_CX = process.env.GOOGLE_SEARCH_CX;
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY;
 
 // Collect all available Gemini API keys
 const GEMINI_API_KEYS = [
@@ -212,7 +209,43 @@ async function summarizeYouTubeVideo(videoUrl) {
         console.log(`Retrieved transcript via youtube-transcript (${transcript.length} characters)`);
       }
     } catch (transcriptError) {
-      console.log('All transcript extraction methods failed (expected for most videos)');
+      console.log('youtube-transcript failed, trying Supadata API...');
+
+      // Fallback: Try Supadata API for transcripts
+      if (SUPADATA_API_KEY) {
+        try {
+          const supadataUrl = new URL('https://api.supadata.ai/v1/transcript');
+          supadataUrl.searchParams.append('url', videoUrl);
+          supadataUrl.searchParams.append('text', 'true');
+          supadataUrl.searchParams.append('mode', 'auto');
+
+          const supadataResponse = await fetch(supadataUrl.toString(), {
+            method: 'GET',
+            headers: {
+              'x-api-key': SUPADATA_API_KEY
+            }
+          });
+
+          if (supadataResponse.ok) {
+            const supadataData = await supadataResponse.json();
+            console.log('Supadata API response structure:', Object.keys(supadataData));
+
+            // Check if we got transcript data
+            if (supadataData.content && supadataData.content.length > 0) {
+              transcript = supadataData.content;
+              console.log(`Retrieved transcript via Supadata API (${transcript.length} characters)`);
+            }
+          } else {
+            console.log(`Supadata API returned status: ${supadataResponse.status}`);
+            const errorText = await supadataResponse.text();
+            console.log('Supadata API error:', errorText);
+          }
+        } catch (supadataError) {
+          console.log('Supadata API failed:', supadataError.message);
+        }
+      } else {
+        console.log('Supadata API key not configured');
+      }
     }
 
     // Format the response
@@ -227,11 +260,41 @@ async function summarizeYouTubeVideo(videoUrl) {
       // If we miraculously got a transcript, use it
       summary += `📝 **Transcript Summary:**\n${transcript.substring(0, 1500)}${transcript.length > 1500 ? '...' : ''}\n\n`;
     } else {
-      // AI-powered summary based on available metadata
-      summary += `📝 **Video Summary:**\n`;
-      summary += `This video appears to be about topics related to: ${tags.slice(0, 5).join(', ')}\n\n`;
-      summary += `**Description:**\n${description.substring(0, 800)}${description.length > 800 ? '...' : ''}\n\n`;
-      summary += `⚠️ *Note: Transcripts are not available for most YouTube videos due to platform restrictions. This summary is based on the video's title, description, and metadata.*\n\n`;
+      // Use AI to generate a summary based on video metadata
+      try {
+        const metadataPrompt = `Based on this YouTube video information, provide a brief, engaging summary of what this video is about:
+
+Title: ${title}
+Channel: ${channelTitle}
+Description: ${description.substring(0, 1000)}
+Tags: ${tags.slice(0, 10).join(', ')}
+Views: ${viewCount}
+Published: ${new Date(publishedAt).toLocaleDateString()}
+
+Please write a concise 2-3 sentence summary that captures the main topic and value of this video.`;
+
+        // Get AI summary using the first available API key
+        const ai = new GoogleGenerativeAI(GEMINI_API_KEYS[0]);
+        const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        const result = await model.generateContent(metadataPrompt);
+        const aiSummary = result.response.text();
+
+        summary += `📝 **AI Summary:**\n${aiSummary}\n\n`;
+        summary += `📊 **Video Stats:**\n`;
+        summary += `• ${parseInt(viewCount).toLocaleString()} views\n`;
+        summary += `• ${parseInt(likeCount).toLocaleString()} likes\n`;
+        summary += `• Published ${new Date(publishedAt).toLocaleDateString()}\n`;
+        summary += `• Duration: ${duration}\n\n`;
+      } catch (aiError) {
+        console.log('AI summary failed, using metadata fallback:', aiError.message);
+        // Fallback to metadata-only summary
+        summary += `📝 **Video Summary:**\n`;
+        summary += `This video appears to be about topics related to: ${tags.slice(0, 5).join(', ')}\n\n`;
+        summary += `**Description:**\n${description.substring(0, 800)}${description.length > 800 ? '...' : ''}\n\n`;
+        summary += `📊 **Stats:** ${parseInt(viewCount).toLocaleString()} views, ${parseInt(likeCount).toLocaleString()} likes\n\n`;
+      }
+
+      summary += `⚠️ *Transcripts are not available for most YouTube videos due to platform restrictions.*\n\n`;
     }
 
     summary += `🔗 ${videoUrl}`;
