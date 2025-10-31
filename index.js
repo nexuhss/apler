@@ -117,7 +117,7 @@ async function searchWeb(query) {
 // Define the search function declaration for Gemini
 const searchFunctionDeclaration = {
   name: 'search_web',
-  description: 'Searches the web using Google Custom Search to find current information, news, facts, or any information not in your training data. Use this when you need up-to-date information or when asked about current events, recent news, live data, or specific facts you\'re unsure about.',
+  description: 'Searches the web for current, real-time information. ALWAYS use this function when asked about: current events, recent news, latest videos/posts, weather, live data, anything happening after your training data cutoff, or any time-sensitive information. Do NOT rely on your training data for recent information - always search instead.',
   parameters: {
     type: 'object',
     properties: {
@@ -135,7 +135,7 @@ const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
   return ai.getGenerativeModel({ 
     model: 'gemini-2.5-pro',
-    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible.',
+    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible. IMPORTANT: When asked about recent events, latest content, or anything time-sensitive, ALWAYS use the search_web function instead of relying on your training data.',
     tools: [{ functionDeclarations: [searchFunctionDeclaration] }]
   });
 });
