@@ -251,7 +251,17 @@ discordClient.on('interactionCreate', async (interaction) => {
       
       console.log(`Received /ask from ${interaction.user.tag}: "${question}"`);
       
+      // Fetch the deferred reply message and add thinking reaction
+      const reply = await interaction.fetchReply();
+      await reply.react('<a:gemini:1433614123941367808>');
+      
       const response = await getAIResponse(question, interaction.channel.id, interaction.user.id);
+      
+      // Remove the thinking reaction
+      const userReactions = reply.reactions.cache.filter(reaction => reaction.me);
+      for (const reaction of userReactions.values()) {
+        await reaction.users.remove(discordClient.user.id);
+      }
       
       // Handle Discord's 2000 character limit
       const MAX_LENGTH = 2000;
@@ -369,8 +379,17 @@ discordClient.on('messageCreate', async (message) => {
 
       console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
+      // React with thinking emoji
+      await message.react('<a:gemini:1433614123941367808>');
+
       // Use the helper function to get AI response
       const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id);
+
+      // Remove the thinking reaction
+      const userReactions = message.reactions.cache.filter(reaction => reaction.me);
+      for (const reaction of userReactions.values()) {
+        await reaction.users.remove(discordClient.user.id);
+      }
 
       // 6. Reply with the response, handling Discord's 2000 character limit
       const MAX_LENGTH = 2000;
