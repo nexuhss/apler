@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { YoutubeTranscript } = require('youtube-transcript');
+const { getSubtitles } = require('youtube-captions-scraper');
 require('dotenv').config();
 
 // --- CONFIGURATION ---
@@ -192,44 +193,62 @@ async function summarizeYouTubeVideo(videoUrl) {
     const channelTitle = video.snippet.channelTitle;
     console.log(`Found video: "${title}" by ${channelTitle}`);
 
-    // Try to get captions/transcript using youtube-transcript package
+    // Try to get captions/transcript using multiple methods
     let transcript = '';
-    try {
-      console.log(`Attempting to fetch transcript for video ID: ${videoId}`);
 
-      // Try with language preferences
-      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
-        lang: 'en', // Prefer English
-        country: 'US' // Sometimes helps with region issues
+    // First try youtube-captions-scraper (better for complex videos like MrBeast)
+    try {
+      console.log(`Attempting to fetch transcript for video ID: ${videoId} using youtube-captions-scraper`);
+
+      const captions = await getSubtitles({
+        videoID: videoId,
+        lang: 'en' // Try English first
       });
 
-      // Debug: log what we got
-      console.log(`Transcript data received: ${transcriptData.length} segments`);
-
-      if (transcriptData && transcriptData.length > 0) {
-        transcript = transcriptData.map(item => item.text).join(' ');
-        console.log(`Retrieved transcript (${transcript.length} characters)`);
+      if (captions && captions.length > 0) {
+        transcript = captions.map(caption => caption.text).join(' ');
+        console.log(`Retrieved transcript via youtube-captions-scraper (${transcript.length} characters)`);
       } else {
-        console.log('Transcript data is empty array');
+        console.log('youtube-captions-scraper returned empty captions');
       }
-    } catch (transcriptError) {
-      console.log('Transcript fetch error details:', transcriptError.message);
+    } catch (scraperError) {
+      console.log('youtube-captions-scraper failed:', scraperError.message);
 
-      // Try without language preferences as fallback
+      // Fallback: try youtube-transcript as backup
       try {
-        console.log('Retrying without language preferences...');
-        const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+        console.log('Trying youtube-transcript as fallback...');
+
+        // Try with language preferences
+        const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
+          lang: 'en',
+          country: 'US'
+        });
+
+        console.log(`Transcript data received: ${transcriptData.length} segments`);
+
         if (transcriptData && transcriptData.length > 0) {
           transcript = transcriptData.map(item => item.text).join(' ');
-          console.log(`Retrieved transcript on retry (${transcript.length} characters)`);
+          console.log(`Retrieved transcript via youtube-transcript fallback (${transcript.length} characters)`);
+        } else {
+          console.log('Transcript data is empty array');
+
+          // Final fallback: try without language preferences
+          try {
+            const fallbackData = await YoutubeTranscript.fetchTranscript(videoId);
+            if (fallbackData && fallbackData.length > 0) {
+              transcript = fallbackData.map(item => item.text).join(' ');
+              console.log(`Retrieved transcript via youtube-transcript final fallback (${transcript.length} characters)`);
+            }
+          } catch (finalError) {
+            console.log('All transcript methods failed');
+            transcript = '';
+          }
         }
-      } catch (retryError) {
-        console.log('Retry also failed:', retryError.message);
+      } catch (transcriptError) {
+        console.log('youtube-transcript fallback failed:', transcriptError.message);
         transcript = '';
       }
-    }
-
-    // Format the response
+    }    // Format the response
     let summary = `**${title}**\nBy: ${channelTitle}\n\n`;
 
     if (transcript && transcript.length > 0) {
