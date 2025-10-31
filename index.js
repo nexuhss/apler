@@ -15,6 +15,11 @@ require('dotenv').config();
 
 const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY;
 
+// Declare all environment variables
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const GOOGLE_SEARCH_API_KEY = process.env.GOOGLE_SEARCH_API_KEY;
+const GOOGLE_SEARCH_CX = process.env.GOOGLE_SEARCH_CX;
+
 // Collect all available Gemini API keys
 const GEMINI_API_KEYS = [
   process.env.GEMINI_API_KEY_1,
