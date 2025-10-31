@@ -90,7 +90,6 @@ async function searchWeb(query) {
 
   try {
     const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_SEARCH_API_KEY}&cx=${GOOGLE_SEARCH_CX}&q=${encodeURIComponent(query)}&num=5`;
-    console.log(`🌐 Searching Google for: "${query}"`);
     const response = await fetch(url);
     const data = await response.json();
 
@@ -100,7 +99,6 @@ async function searchWeb(query) {
     }
 
     if (!data.items || data.items.length === 0) {
-      console.log('No search results found');
       return 'No search results found.';
     }
 
@@ -109,7 +107,6 @@ async function searchWeb(query) {
       `${index + 1}. ${item.title}\n   ${item.snippet}\n   URL: ${item.link}`
     ).join('\n\n');
 
-    console.log(`✓ Found ${data.items.length} search results`);
     return `Search results for "${query}":\n\n${results}`;
   } catch (error) {
     console.error('Search error:', error);
@@ -318,18 +315,15 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
       while (response.functionCalls() && functionCallIterations < MAX_FUNCTION_CALLS) {
         functionCallIterations++;
         const functionCall = response.functionCalls()[0];
-        console.log(`🔍 Function call: ${functionCall.name}(${JSON.stringify(functionCall.args)})`);
         
         let functionResponse;
         if (functionCall.name === 'search_web') {
           functionResponse = await searchWeb(functionCall.args.query);
-          console.log(`📊 Search results: ${functionResponse.substring(0, 200)}...`);
         } else {
           functionResponse = 'Unknown function';
         }
         
         // Send function result back to the model
-        console.log(`📤 Sending function response back to AI...`);
         result = await chat.sendMessage([{
           functionResponse: {
             name: functionCall.name,
@@ -337,7 +331,6 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
           }
         }]);
         response = result.response;
-        console.log(`✅ AI processed function response, has text: ${!!response.text()}`);
       }
       
       geminiResponseText = response.text();

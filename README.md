@@ -15,8 +15,8 @@ A smart Discord bot powered by Google's Gemini 2.5 Pro AI. Use slash commands or
 ## ✨ Features
 
 - 🧠 **Powered by Gemini 2.5 Pro**: Uses Google's most advanced AI model for high-quality responses
-- � **Web Search Integration**: Can search the web for current information and real-time data
-- �💭 **Flexible Memory Modes**: Choose between channel-wide or per-user conversation memory
+- 🔍 **Web Search Integration**: Automatically searches Google for current information, weather, news, and real-time data
+- � **Flexible Memory Modes**: Choose between channel-wide or per-user conversation memory
 - 🔄 **Multi-Key Load Balancing**: Rotates through 5 API keys to maximize uptime and avoid rate limits
 - ⚡ **Slash Commands**: Modern Discord commands for clean interactions
 - 📝 **Smart Message Splitting**: Automatically splits long responses at natural boundaries
@@ -41,10 +41,11 @@ A smart Discord bot powered by Google's Gemini 2.5 Pro AI. Use slash commands or
 ```
 @apler What's the capital of France?
 @apler Tell me something interesting about it
+@apler How's the weather in Tokyo today?
 @apler Help me write a Python function to sort a list
 ```
 
-Apler remembers your conversation based on the channel's memory mode!
+Apler remembers your conversation and can search the web when needed!
 
 ## 🎮 Commands
 
@@ -77,6 +78,10 @@ Bot retrieves conversation history (channel or user-based)
        ↓
 Sends message to Gemini 2.5 Pro (round-robin across 5 API keys)
        ↓
+   AI needs current info? ──Yes──→ Automatically searches Google
+       ↓                                    ↓
+      No                           Results sent back to AI
+       ↓                                    ↓
    Success? ──Yes──→ Remove emoji & send formatted response
        ↓
       No (rate limit)
@@ -88,8 +93,8 @@ Repeat until success or all keys exhausted
 
 ## 🚀 Technical Highlights
 
-- **Google Custom Search integration** for real-time web information
-- **Function calling** - AI automatically searches when needed
+- **Google Custom Search integration** - AI automatically searches for current information
+- **Function calling** - Seamless integration between AI and web search
 - **Round-robin API key rotation** for 5x capacity
 - **Flexible memory system** (per-channel or per-user)
 - **Per-channel/user conversation memory** (up to 20 messages)
@@ -100,27 +105,44 @@ Repeat until success or all keys exhausted
 - **Animated thinking reactions** for visual feedback
 - **Optimized system prompts** for short, well-formatted responses
 
-## 🔧 Setup
+## 🔧 Setup for Railway Deployment
 
-To enable web search functionality:
+To deploy this bot yourself:
 
-1. Get a **Google Custom Search API Key**:
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a project and enable Custom Search API
-   - Create credentials (API Key)
+1. **Get API Keys**:
+   - Discord Bot Token from [Discord Developer Portal](https://discord.com/developers/applications)
+   - 5 Gemini API Keys from [Google AI Studio](https://aistudio.google.com/apikey)
+   - Google Custom Search API Key from [Google Cloud Console](https://console.cloud.google.com/)
+   - Custom Search Engine ID from [Programmable Search Engine](https://programmablesearchengine.google.com/)
 
-2. Create a **Custom Search Engine**:
-   - Go to [Programmable Search Engine](https://programmablesearchengine.google.com/)
-   - Create a new search engine
-   - Copy the Search Engine ID (CX)
+2. **Deploy to Railway**:
+   - Fork this repository
+   - Create a new project on [Railway](https://railway.app/)
+   - Connect your GitHub repository
+   - Add environment variables in Railway dashboard:
+     ```
+     DISCORD_BOT_TOKEN=your_token
+     GEMINI_API_KEY_1=your_key_1
+     GEMINI_API_KEY_2=your_key_2
+     GEMINI_API_KEY_3=your_key_3
+     GEMINI_API_KEY_4=your_key_4
+     GEMINI_API_KEY_5=your_key_5
+     GOOGLE_SEARCH_API_KEY=your_search_key
+     GOOGLE_SEARCH_CX=your_cx_id
+     ```
+   - Railway will auto-deploy on every push to main branch
 
-3. Add to your `.env` file:
-   ```
-   GOOGLE_SEARCH_API_KEY=your_api_key_here
-   GOOGLE_SEARCH_CX=your_cx_id_here
-   ```
+3. **Invite the Bot**:
+   - Go to Discord Developer Portal
+   - OAuth2 → URL Generator
+   - Select scopes: `bot`, `applications.commands`
+   - Select permissions: `Send Messages`, `Use Slash Commands`, `Add Reactions`
+   - Copy and visit the URL to add bot to your server
 
-**Note**: Free tier allows 100 searches per day.
+**Note**: Free tier limits:
+- Railway: 500 hours/month
+- Gemini: Rate limits per key (5 keys = 5x capacity)
+- Google Search: 100 searches/day
 
 ---
 
