@@ -1,6 +1,5 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { YoutubeTranscript } = require('youtube-transcript');
 require('dotenv').config();
 
 // --- CONFIGURATION ---
@@ -58,6 +57,7 @@ function cleanupOldChannels() {
   for (const [channelId, data] of conversationHistory.entries()) {
     if (now - data.lastActivity > MAX_INACTIVITY) {
       conversationHistory.delete(channelId);
+      channelMemoryMode.delete(channelId); // Also clean up memory mode settings
       cleaned++;
     }
   }
@@ -200,57 +200,57 @@ async function summarizeYouTubeVideo(videoUrl) {
 
     console.log(`Found video: "${title}" by ${channelTitle}`);
 
-    // Try to get transcript using multiple methods
+    // Try to get transcript using Supadata API
     let transcript = '';
 
-    // Try multiple methods but don't expect them to work
-    try {
-      console.log('Attempting transcript extraction...');
+    console.log('Attempting transcript extraction with Supadata API...');
 
-      // Try youtube-transcript first (most reliable of the failing options)
-      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
-      if (transcriptData && transcriptData.length > 0) {
-        transcript = transcriptData.map(item => item.text).join(' ');
-        console.log(`Retrieved transcript via youtube-transcript (${transcript.length} characters)`);
-      }
-    } catch (transcriptError) {
-      console.log('youtube-transcript failed, trying Supadata API...');
+    if (SUPADATA_API_KEY) {
+      console.log('Supadata API key is configured, proceeding with transcript request...');
+      try {
+        const supadataUrl = new URL('https://api.supadata.ai/v1/transcript');
+        supadataUrl.searchParams.append('url', videoUrl);
+        supadataUrl.searchParams.append('text', 'true');
+        supadataUrl.searchParams.append('mode', 'auto');
 
-      // Fallback: Try Supadata API for transcripts
-      if (SUPADATA_API_KEY) {
-        try {
-          const supadataUrl = new URL('https://api.supadata.ai/v1/transcript');
-          supadataUrl.searchParams.append('url', videoUrl);
-          supadataUrl.searchParams.append('text', 'true');
-          supadataUrl.searchParams.append('mode', 'auto');
+        console.log(`🚀 Supadata API Request: ${supadataUrl.toString().replace(SUPADATA_API_KEY, '[API_KEY]')}`);
+        console.log(`📹 Video URL: ${videoUrl}`);
 
-          const supadataResponse = await fetch(supadataUrl.toString(), {
-            method: 'GET',
-            headers: {
-              'x-api-key': SUPADATA_API_KEY
-            }
-          });
-
-          if (supadataResponse.ok) {
-            const supadataData = await supadataResponse.json();
-            console.log('Supadata API response structure:', Object.keys(supadataData));
-
-            // Check if we got transcript data
-            if (supadataData.content && supadataData.content.length > 0) {
-              transcript = supadataData.content;
-              console.log(`Retrieved transcript via Supadata API (${transcript.length} characters)`);
-            }
-          } else {
-            console.log(`Supadata API returned status: ${supadataResponse.status}`);
-            const errorText = await supadataResponse.text();
-            console.log('Supadata API error:', errorText);
+        const supadataResponse = await fetch(supadataUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'x-api-key': SUPADATA_API_KEY
           }
-        } catch (supadataError) {
-          console.log('Supadata API failed:', supadataError.message);
+        });
+
+        console.log(`📡 Supadata API Response Status: ${supadataResponse.status}`);
+
+        if (supadataResponse.ok) {
+          const supadataData = await supadataResponse.json();
+          console.log('📋 Supadata API Response Keys:', Object.keys(supadataData));
+          console.log('📊 Supadata API Full Response:', JSON.stringify(supadataData, null, 2));
+
+          // Check if we got transcript data
+          if (supadataData.content && supadataData.content.length > 0) {
+            transcript = supadataData.content;
+            console.log(`✅ SUCCESS: Retrieved transcript via Supadata API (${transcript.length} characters)`);
+            console.log(`📝 Transcript Preview: "${transcript.substring(0, 200)}${transcript.length > 200 ? '...' : ''}"`);
+          } else {
+            console.log('❌ FAILURE: Supadata API returned empty content');
+            console.log('Response data:', supadataData);
+          }
+        } else {
+          console.log(`❌ FAILURE: Supadata API returned HTTP ${supadataResponse.status}`);
+          const errorText = await supadataResponse.text();
+          console.log('Error response body:', errorText);
         }
-      } else {
-        console.log('Supadata API key not configured');
+      } catch (supadataError) {
+        console.log('💥 EXCEPTION: Supadata API request failed');
+        console.log('Error details:', supadataError.message);
+        console.log('Error stack:', supadataError.stack);
       }
+    } else {
+      console.log('⚠️ WARNING: Supadata API key not configured');
     }
 
     // Format the response
@@ -262,10 +262,32 @@ async function summarizeYouTubeVideo(videoUrl) {
     summary += `⏱️ **Duration:** ${duration}\n\n`;
 
     if (transcript && transcript.length > 0) {
-      // If we miraculously got a transcript, use it
-      summary += `📝 **Transcript Summary:**\n${transcript.substring(0, 1500)}${transcript.length > 1500 ? '...' : ''}\n\n`;
+      console.log('🎯 FINAL: Using transcript-based summarization');
+      // If we got a transcript from Supadata, summarize it with AI
+      try {
+        const transcriptPrompt = `Please provide a concise summary of this YouTube video transcript. Focus on the main topics, key points, and overall message. Keep it to 2-3 sentences.
+
+Transcript: ${transcript.substring(0, 5000)}${transcript.length > 5000 ? '...' : ''}`;
+
+        const ai = new GoogleGenerativeAI(GEMINI_API_KEYS[0]);
+        const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        const result = await model.generateContent(transcriptPrompt);
+        const transcriptSummary = result.response.text();
+
+        summary += `📝 **Transcript Summary:**\n${transcriptSummary}\n\n`;
+        summary += `📊 **Video Stats:**\n`;
+        summary += `• ${parseInt(viewCount).toLocaleString()} views\n`;
+        summary += `• ${parseInt(likeCount).toLocaleString()} likes\n`;
+        summary += `• Published ${new Date(publishedAt).toLocaleDateString()}\n`;
+        summary += `• Duration: ${duration}\n\n`;
+      } catch (aiError) {
+        console.log('AI transcript summary failed, using raw transcript:', aiError.message);
+        // Fallback to showing part of the transcript
+        summary += `📝 **Transcript (excerpt):**\n${transcript.substring(0, 1000)}${transcript.length > 1000 ? '...' : ''}\n\n`;
+      }
     } else {
-      // Use AI to generate a summary based on video metadata
+      console.log('🎯 FINAL: Using metadata-based AI summarization (no transcript available)');
+      // No transcript available, use AI to generate summary based on metadata
       try {
         const metadataPrompt = `Based on this YouTube video information, provide a brief, engaging summary of what this video is about:
 
@@ -278,7 +300,6 @@ Published: ${new Date(publishedAt).toLocaleDateString()}
 
 Please write a concise 2-3 sentence summary that captures the main topic and value of this video.`;
 
-        // Get AI summary using the first available API key
         const ai = new GoogleGenerativeAI(GEMINI_API_KEYS[0]);
         const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
         const result = await model.generateContent(metadataPrompt);
@@ -299,7 +320,7 @@ Please write a concise 2-3 sentence summary that captures the main topic and val
         summary += `📊 **Stats:** ${parseInt(viewCount).toLocaleString()} views, ${parseInt(likeCount).toLocaleString()} likes\n\n`;
       }
 
-      summary += `⚠️ *Transcripts are not available for most YouTube videos due to platform restrictions.*\n\n`;
+      summary += `⚠️ *No transcript available for this video.*\n\n`;
     }
 
     summary += `🔗 ${videoUrl}`;
