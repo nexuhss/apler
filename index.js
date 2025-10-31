@@ -8,8 +8,12 @@ require('dotenv').config();
 // GEMINI_API_KEY_1=your_first_gemini_api_key
 // GEMINI_API_KEY_2=your_second_gemini_api_key
 // ... (up to GEMINI_API_KEY_5)
+// GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
+// GOOGLE_SEARCH_CX=your_custom_search_engine_id
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const GOOGLE_SEARCH_API_KEY = process.env.GOOGLE_SEARCH_API_KEY;
+const GOOGLE_SEARCH_CX = process.env.GOOGLE_SEARCH_CX;
 
 // Collect all available Gemini API keys
 const GEMINI_API_KEYS = [
@@ -78,12 +82,56 @@ function getNextApiKey() {
   return key;
 }
 
+// Google Custom Search function
+async function searchWeb(query) {
+  if (!GOOGLE_SEARCH_API_KEY || !GOOGLE_SEARCH_CX) {
+    return 'Web search is not configured. Please add GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX to environment variables.';
+  }
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_SEARCH_API_KEY}&cx=${GOOGLE_SEARCH_CX}&q=${encodeURIComponent(query)}&num=5`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.items || data.items.length === 0) {
+      return 'No search results found.';
+    }
+
+    // Format results for the AI
+    const results = data.items.slice(0, 5).map((item, index) => 
+      `${index + 1}. ${item.title}\n   ${item.snippet}\n   URL: ${item.link}`
+    ).join('\n\n');
+
+    return `Search results for "${query}":\n\n${results}`;
+  } catch (error) {
+    console.error('Search error:', error);
+    return `Search failed: ${error.message}`;
+  }
+}
+
+// Define the search function declaration for Gemini
+const searchFunctionDeclaration = {
+  name: 'search_web',
+  description: 'Searches the web using Google Custom Search to find current information, news, facts, or any information not in your training data. Use this when you need up-to-date information or when asked about current events, recent news, live data, or specific facts you\'re unsure about.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The search query to look up on Google'
+      }
+    },
+    required: ['query']
+  }
+};
+
 // Pre-create all models at startup for reuse (optimization)
 const modelInstances = GEMINI_API_KEYS.map(apiKey => {
   const ai = new GoogleGenerativeAI(apiKey);
   return ai.getGenerativeModel({ 
     model: 'gemini-2.5-pro',
-    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible.'
+    systemInstruction: 'You are apler, a helpful Discord bot. Keep responses well-formatted using Discord markdown (** for bold, * for italic, ` for code, ``` for code blocks). Give short answers when possible.',
+    tools: [{ functionDeclarations: [searchFunctionDeclaration] }]
   });
 });
 
@@ -251,8 +299,36 @@ async function getAIResponse(userPrompt, channelId, userId = null) {
       const chat = model.startChat({
         history: history.slice(0, -1), // All messages except the current one
       });
-      const result = await chat.sendMessage(userPrompt);
-      const response = await result.response;
+      
+      let result = await chat.sendMessage(userPrompt);
+      let response = result.response;
+      
+      // Handle function calls
+      let functionCallIterations = 0;
+      const MAX_FUNCTION_CALLS = 3; // Prevent infinite loops
+      
+      while (response.functionCalls() && functionCallIterations < MAX_FUNCTION_CALLS) {
+        functionCallIterations++;
+        const functionCall = response.functionCalls()[0];
+        console.log(`🔍 Function call: ${functionCall.name}(${JSON.stringify(functionCall.args)})`);
+        
+        let functionResponse;
+        if (functionCall.name === 'search_web') {
+          functionResponse = await searchWeb(functionCall.args.query);
+        } else {
+          functionResponse = 'Unknown function';
+        }
+        
+        // Send function result back to the model
+        result = await chat.sendMessage([{
+          functionResponse: {
+            name: functionCall.name,
+            response: { result: functionResponse }
+          }
+        }]);
+        response = result.response;
+      }
+      
       geminiResponseText = response.text();
       usedModel = `gemini-2.5-pro (API Key ${keyIndex})`;
       console.log(`✓ Used: ${usedModel}`);

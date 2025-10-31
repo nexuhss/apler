@@ -15,7 +15,8 @@ A smart Discord bot powered by Google's Gemini 2.5 Pro AI. Use slash commands or
 ## ✨ Features
 
 - 🧠 **Powered by Gemini 2.5 Pro**: Uses Google's most advanced AI model for high-quality responses
-- 💭 **Flexible Memory Modes**: Choose between channel-wide or per-user conversation memory
+- � **Web Search Integration**: Can search the web for current information and real-time data
+- �💭 **Flexible Memory Modes**: Choose between channel-wide or per-user conversation memory
 - 🔄 **Multi-Key Load Balancing**: Rotates through 5 API keys to maximize uptime and avoid rate limits
 - ⚡ **Slash Commands**: Modern Discord commands for clean interactions
 - 📝 **Smart Message Splitting**: Automatically splits long responses at natural boundaries
@@ -87,6 +88,8 @@ Repeat until success or all keys exhausted
 
 ## 🚀 Technical Highlights
 
+- **Google Custom Search integration** for real-time web information
+- **Function calling** - AI automatically searches when needed
 - **Round-robin API key rotation** for 5x capacity
 - **Flexible memory system** (per-channel or per-user)
 - **Per-channel/user conversation memory** (up to 20 messages)
@@ -96,6 +99,28 @@ Repeat until success or all keys exhausted
 - **Auto-deleting error messages** (5 seconds)
 - **Animated thinking reactions** for visual feedback
 - **Optimized system prompts** for short, well-formatted responses
+
+## 🔧 Setup
+
+To enable web search functionality:
+
+1. Get a **Google Custom Search API Key**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a project and enable Custom Search API
+   - Create credentials (API Key)
+
+2. Create a **Custom Search Engine**:
+   - Go to [Programmable Search Engine](https://programmablesearchengine.google.com/)
+   - Create a new search engine
+   - Copy the Search Engine ID (CX)
+
+3. Add to your `.env` file:
+   ```
+   GOOGLE_SEARCH_API_KEY=your_api_key_here
+   GOOGLE_SEARCH_CX=your_cx_id_here
+   ```
+
+**Note**: Free tier allows 100 searches per day.
 
 ---
 
