@@ -300,7 +300,7 @@ discordClient.on('interactionCreate', async (interaction) => {
       
       // Fetch the deferred reply message and add thinking reaction
       const reply = await interaction.fetchReply();
-      await reply.react('<a:thinking:1433654066877173791>');
+      await reply.react('<a:thinking:1433872234774003943>');
       
       const response = await getAIResponse(question, interaction.channel.id, interaction.user.id);
       
@@ -434,7 +434,7 @@ discordClient.on('messageCreate', async (message) => {
       console.log(`Received prompt from ${message.author.tag}: "${userPrompt}"`);
 
       // React with thinking emoji
-      await message.react('<a:thinking:1433654066877173791>');
+      await message.react('<a:thinking:1433872234774003943>');
 
       // Use the helper function to get AI response
       const geminiResponseText = await getAIResponse(userPrompt, message.channel.id, message.author.id);
