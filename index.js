@@ -198,7 +198,7 @@ async function summarizeYouTubeVideo(videoUrl) {
 
     console.log(`Found video: "${title}" by ${channelTitle}`);
 
-    // Try to get transcript (but expect it to fail for most videos now)
+    // Try to get transcript using multiple methods
     let transcript = '';
 
     // Try multiple methods but don't expect them to work
@@ -209,10 +209,10 @@ async function summarizeYouTubeVideo(videoUrl) {
       const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
       if (transcriptData && transcriptData.length > 0) {
         transcript = transcriptData.map(item => item.text).join(' ');
-        console.log(`Retrieved transcript (${transcript.length} characters)`);
+        console.log(`Retrieved transcript via youtube-transcript (${transcript.length} characters)`);
       }
     } catch (transcriptError) {
-      console.log('Transcript extraction failed (expected for most videos)');
+      console.log('All transcript extraction methods failed (expected for most videos)');
     }
 
     // Format the response
