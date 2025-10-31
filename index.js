@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, Permission
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { YoutubeTranscript } = require('youtube-transcript');
 const { getSubtitles } = require('youtube-captions-scraper');
+const ytdl = require('ytdl-core');
 require('dotenv').config();
 
 // --- CONFIGURATION ---
@@ -248,7 +249,53 @@ async function summarizeYouTubeVideo(videoUrl) {
         console.log('youtube-transcript fallback failed:', transcriptError.message);
         transcript = '';
       }
-    }    // Format the response
+    }
+
+    // If both previous methods failed, try ytdl-core as final fallback
+    if (!transcript) {
+      try {
+        console.log('Trying ytdl-core as final fallback...');
+
+        const info = await ytdl.getInfo(videoId);
+        const tracks = info.player_response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+
+        if (tracks && tracks.length > 0) {
+          console.log(`Found ${tracks.length} caption track(s)`);
+
+          // Get the first English track or first available
+          const track = tracks.find(t => t.languageCode === 'en' || t.languageCode.startsWith('en')) || tracks[0];
+          console.log(`Using caption track: ${track.name?.simpleText || track.languageCode}`);
+
+          // Fetch the actual captions
+          const captionResponse = await fetch(track.baseUrl);
+          const captionXml = await captionResponse.text();
+
+          // Extract text from XML (basic parsing)
+          const textMatches = captionXml.match(/<text[^>]*>([^<]+)<\/text>/g);
+          if (textMatches) {
+            transcript = textMatches
+              .map(match => {
+                // Remove XML tags and decode HTML entities
+                return match.replace(/<[^>]+>/g, '')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&quot;/g, '"')
+                  .replace(/&#39;/g, "'")
+                  .replace(/&apos;/g, "'");
+              })
+              .join(' ');
+            console.log(`Retrieved transcript via ytdl-core (${transcript.length} characters)`);
+          }
+        } else {
+          console.log('No caption tracks found in video info');
+        }
+      } catch (ytdlError) {
+        console.log('ytdl-core fallback failed:', ytdlError.message);
+      }
+    }
+
+    // Format the response
     let summary = `**${title}**\nBy: ${channelTitle}\n\n`;
 
     if (transcript && transcript.length > 0) {
